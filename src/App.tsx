@@ -14,6 +14,7 @@ import {
   GripVertical,
   Info,
   LayoutDashboard,
+  LogOut,
   Menu,
   Plus,
   Save,
@@ -42,6 +43,8 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { Project, Scene, SceneType, Step } from './types';
+import { AuthPage } from './AuthPage';
+import { supabase } from './supabaseClient';
 
 const STORAGE_KEY = 'scriptflow_project';
 
@@ -60,10 +63,10 @@ const STEP_ORDER: Step[] = ['synopsis', 'developedSynopsis', 'board', 'treatment
 
 const steps: { id: Step; label: string; icon: ComponentType<{ size?: number; className?: string }> }[] = [
   { id: 'synopsis', label: 'Synopsis', icon: BookOpen },
-  { id: 'developedSynopsis', label: 'Synopsis développé', icon: FileText },
-  { id: 'board', label: 'Scène à scène', icon: LayoutDashboard },
+  { id: 'developedSynopsis', label: 'Synopsis dÃ©veloppÃ©', icon: FileText },
+  { id: 'board', label: 'ScÃ¨ne Ã  scÃ¨ne', icon: LayoutDashboard },
   { id: 'treatment', label: 'Traitement', icon: Edit3 },
-  { id: 'screenplay', label: 'Scénario', icon: Clapperboard },
+  { id: 'screenplay', label: 'ScÃ©nario', icon: Clapperboard },
 ];
 
 function normalizeProject(value: unknown): Project {
@@ -83,7 +86,7 @@ function createScene(order: number, overrides: Partial<Scene> = {}): Scene {
   return {
     id: crypto.randomUUID(),
     order,
-    title: `Scène ${order + 1}`,
+    title: `ScÃ¨ne ${order + 1}`,
     indications: 'INT. LIEU - JOUR',
     description: '',
     dramaticInfo: '',
@@ -118,33 +121,33 @@ function asMarkdown(project: Project) {
     .map(
       (scene, index) => `### ${index + 1}. ${scene.title}
 
-- Indications: ${scene.indications || 'Non renseigné'}
+- Indications: ${scene.indications || 'Non renseignÃ©'}
 - Type: ${scene.type}
-- Information dramatique: ${scene.dramaticInfo || 'Non renseignée'}
+- Information dramatique: ${scene.dramaticInfo || 'Non renseignÃ©e'}
 
-${scene.description || 'Description à compléter.'}`,
+${scene.description || 'Description Ã  complÃ©ter.'}`,
     )
     .join('\n\n');
 
   return `# ${project.title || 'Sans titre'}
 
 ## Logline
-${project.logline || 'À compléter.'}
+${project.logline || 'Ã€ complÃ©ter.'}
 
 ## Synopsis
-${project.synopsis || 'À compléter.'}
+${project.synopsis || 'Ã€ complÃ©ter.'}
 
-## Synopsis développé
-${project.developedSynopsis || 'À compléter.'}
+## Synopsis dÃ©veloppÃ©
+${project.developedSynopsis || 'Ã€ complÃ©ter.'}
 
-## Scène à scène
-${scenes || 'Aucune scène.'}
+## ScÃ¨ne Ã  scÃ¨ne
+${scenes || 'Aucune scÃ¨ne.'}
 
 ## Traitement
-${project.treatment || 'À compléter.'}
+${project.treatment || 'Ã€ complÃ©ter.'}
 
-## Scénario
-${project.screenplay || 'À compléter.'}
+## ScÃ©nario
+${project.screenplay || 'Ã€ complÃ©ter.'}
 
 ## Notes
 ${project.notes || 'Aucune note.'}
@@ -163,15 +166,46 @@ function downloadText(filename: string, text: string) {
 
 export default function App() {
   const [project, setProject] = useState<Project>(DEFAULT_PROJECT);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState('');
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>('synopsis');
   const [isLoaded, setIsLoaded] = useState(false);
   const [editingScene, setEditingScene] = useState<Scene | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('Sauvegarde locale prête.');
+  const [statusMessage, setStatusMessage] = useState('Sauvegarde locale prÃªte.');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!supabase) {
+      setIsAuthReady(true);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      const user = data.session?.user ?? null;
+      setUserId(user?.id ?? null);
+      setUserEmail(user?.email ?? '');
+      setIsAuthReady(true);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user ?? null;
+      setUserId(user?.id ?? null);
+      setUserEmail(user?.email ?? '');
+      setProject(DEFAULT_PROJECT);
+      setIsLoaded(false);
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthReady || !userId) {
+      return;
+    }
+
+    const saved = localStorage.getItem(STORAGE_KEY + ':' + userId);
     if (saved) {
       try {
         setProject(normalizeProject(JSON.parse(saved)));
@@ -179,16 +213,18 @@ export default function App() {
         console.error('Failed to load project', error);
         setStatusMessage('Impossible de relire la sauvegarde locale.');
       }
+    } else {
+      setProject(DEFAULT_PROJECT);
     }
     setIsLoaded(true);
-  }, []);
+  }, [isAuthReady, userId]);
 
   useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
-      setStatusMessage('Sauvegardé automatiquement.');
+    if (isLoaded && userId) {
+      localStorage.setItem(STORAGE_KEY + ':' + userId, JSON.stringify(project));
+      setStatusMessage('SauvegardÃ© automatiquement.');
     }
-  }, [project, isLoaded]);
+  }, [project, isLoaded, userId]);
 
   const progress = useMemo(() => {
     const completed = [
@@ -219,21 +255,21 @@ export default function App() {
 
   const handleAiAssist = async (stepId: Step) => {
     setIsAiLoading(true);
-    setStatusMessage('Génération IA en cours...');
+    setStatusMessage('GÃ©nÃ©ration IA en cours...');
     try {
       const context = `Titre: ${project.title}
 Logline: ${project.logline}
 Synopsis: ${project.synopsis}
-Synopsis développé: ${project.developedSynopsis}
-Scènes: ${JSON.stringify(project.scenes)}
+Synopsis dÃ©veloppÃ©: ${project.developedSynopsis}
+ScÃ¨nes: ${JSON.stringify(project.scenes)}
 Traitement: ${project.treatment}`;
 
       const prompts: Record<Step, string> = {
-        synopsis: `Tu es script-doctor. Améliore ce synopsis ou propose une base originale si le texte est vide. Réponds uniquement avec le synopsis, en français, en 2 à 4 paragraphes.\n\n${context}`,
-        developedSynopsis: `Développe le synopsis en récit clair de 500 à 800 mots. Mets en valeur protagoniste, désir, obstacle, escalade, bascule centrale et résolution. Réponds uniquement avec le texte.\n\n${context}`,
-        board: `Propose un scène à scène de long métrage à partir du projet. Réponds uniquement en JSON valide: un tableau de 8 à 12 objets avec title, indications, description, dramaticInfo, type. Les types autorisés sont: ${Object.values(SceneType).join(', ')}.\n\n${context}`,
-        treatment: `Écris un traitement cinématographique au présent de l'indicatif à partir du scène à scène. Ton: précis, visuel, narratif. Réponds uniquement avec le traitement.\n\n${context}`,
-        screenplay: `Transforme le traitement en extrait de scénario professionnel français: intitulés INT./EXT., action au présent, dialogues lisibles. Réponds uniquement avec le scénario.\n\n${context}`,
+        synopsis: `Tu es script-doctor. AmÃ©liore ce synopsis ou propose une base originale si le texte est vide. RÃ©ponds uniquement avec le synopsis, en franÃ§ais, en 2 Ã  4 paragraphes.\n\n${context}`,
+        developedSynopsis: `DÃ©veloppe le synopsis en rÃ©cit clair de 500 Ã  800 mots. Mets en valeur protagoniste, dÃ©sir, obstacle, escalade, bascule centrale et rÃ©solution. RÃ©ponds uniquement avec le texte.\n\n${context}`,
+        board: `Propose un scÃ¨ne Ã  scÃ¨ne de long mÃ©trage Ã  partir du projet. RÃ©ponds uniquement en JSON valide: un tableau de 8 Ã  12 objets avec title, indications, description, dramaticInfo, type. Les types autorisÃ©s sont: ${Object.values(SceneType).join(', ')}.\n\n${context}`,
+        treatment: `Ã‰cris un traitement cinÃ©matographique au prÃ©sent de l'indicatif Ã  partir du scÃ¨ne Ã  scÃ¨ne. Ton: prÃ©cis, visuel, narratif. RÃ©ponds uniquement avec le traitement.\n\n${context}`,
+        screenplay: `Transforme le traitement en extrait de scÃ©nario professionnel franÃ§ais: intitulÃ©s INT./EXT., action au prÃ©sent, dialogues lisibles. RÃ©ponds uniquement avec le scÃ©nario.\n\n${context}`,
       };
 
       const response = await fetch('/api/generate', {
@@ -249,7 +285,7 @@ Traitement: ${project.treatment}`;
 
       const newText = typeof data.text === 'string' ? data.text.trim() : '';
       if (!newText) {
-        setStatusMessage("L'IA n'a pas renvoyé de contenu exploitable.");
+        setStatusMessage("L'IA n'a pas renvoyÃ© de contenu exploitable.");
         return;
       }
 
@@ -259,7 +295,7 @@ Traitement: ${project.treatment}`;
         updateProject({
           scenes: generatedScenes.map((scene, index) =>
             createScene(index, {
-              title: scene.title || `Scène ${index + 1}`,
+              title: scene.title || `ScÃ¨ne ${index + 1}`,
               indications: scene.indications || 'INT. LIEU - JOUR',
               description: scene.description || '',
               dramaticInfo: scene.dramaticInfo || '',
@@ -273,10 +309,10 @@ Traitement: ${project.treatment}`;
         updateProject({ [stepId]: newText });
       }
 
-      setStatusMessage('Proposition IA intégrée.');
+      setStatusMessage('Proposition IA intÃ©grÃ©e.');
     } catch (error) {
       console.error('OpenAI Error:', error);
-      setStatusMessage("La génération IA a échoué. Vérifiez OPENAI_API_KEY dans Vercel ou .env.local.");
+      setStatusMessage("La gÃ©nÃ©ration IA a Ã©chouÃ©. VÃ©rifiez OPENAI_API_KEY dans Vercel ou .env.local.");
     } finally {
       setIsAiLoading(false);
     }
@@ -304,20 +340,34 @@ Traitement: ${project.treatment}`;
   };
 
   const resetProject = () => {
-    const confirmed = window.confirm('Effacer ce projet localement ? Cette action ne peut pas être annulée.');
+    const confirmed = window.confirm('Effacer ce projet localement ? Cette action ne peut pas Ãªtre annulÃ©e.');
     if (!confirmed) {
       return;
     }
-    localStorage.removeItem(STORAGE_KEY);
+    if (userId) {
+      localStorage.removeItem(STORAGE_KEY + ':' + userId);
+    }
     setProject(DEFAULT_PROJECT);
-    setStatusMessage('Projet réinitialisé.');
+    setStatusMessage('Projet rÃ©initialisÃ©.');
   };
 
   const exportProject = () => {
     const slug = (project.title || 'sigma').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     downloadText(`${slug || 'sigma'}.md`, asMarkdown(project));
-    setStatusMessage('Export Markdown téléchargé.');
+    setStatusMessage('Export Markdown tÃ©lÃ©chargÃ©.');
   };
+
+  const signOut = async () => {
+    await supabase?.auth.signOut();
+  };
+
+  if (!isAuthReady) {
+    return null;
+  }
+
+  if (!userId) {
+    return <AuthPage />;
+  }
 
   if (!isLoaded) {
     return null;
@@ -366,8 +416,12 @@ Traitement: ${project.treatment}`;
             <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={() => setIsMobileNavOpen((value) => !value)}>
               <Menu size={17} />
             </Button>
+            <span className="hidden max-w-[180px] truncate text-xs text-[#393E46] lg:inline">{userEmail}</span>
             <Button variant="ghost" size="sm" className="hidden text-[#222831]/45 hover:text-[#222831] sm:inline-flex" onClick={resetProject}>
               Effacer
+            </Button>
+            <Button variant="ghost" size="icon-sm" className="text-[#393E46] hover:text-[#222831]" onClick={signOut} title="Se d?connecter">
+              <LogOut size={16} />
             </Button>
             <Button variant="outline" size="sm" className="border-[#393E46] text-xs uppercase tracking-widest" onClick={exportProject}>
               <Download size={14} className="mr-2" />
@@ -411,7 +465,7 @@ Traitement: ${project.treatment}`;
                 value={project.logline}
                 onChange={(event) => updateProject({ logline: event.target.value })}
                 className="h-24 resize-none border-[#393E46] bg-[#FFFFFF] text-sm leading-relaxed"
-                placeholder="Logline: protagoniste, désir, obstacle, enjeu."
+                placeholder="Logline: protagoniste, dÃ©sir, obstacle, enjeu."
               />
             </div>
           </Card>
@@ -425,7 +479,7 @@ Traitement: ${project.treatment}`;
               <div className="h-full bg-[#FFD369]" style={{ width: `${progress}%` }} />
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-              <Metric label="Scènes" value={sceneStats.sceneCount} />
+              <Metric label="ScÃ¨nes" value={sceneStats.sceneCount} />
               <Metric label="Minutes" value={sceneStats.estimatedMinutes} />
               <Metric label="Mots" value={sceneStats.wordCount} />
               <Metric label="Pages" value={sceneStats.screenplayPages} />
@@ -438,7 +492,7 @@ Traitement: ${project.treatment}`;
               value={project.notes}
               onChange={(event) => updateProject({ notes: event.target.value })}
               className="mt-3 h-40 resize-none border-[#393E46] bg-[#FFFFFF] text-sm"
-              placeholder="Questions, pistes de réécriture, références..."
+              placeholder="Questions, pistes de rÃ©Ã©criture, rÃ©fÃ©rences..."
             />
           </Card>
         </aside>
@@ -455,7 +509,7 @@ Traitement: ${project.treatment}`;
               {currentStep === 'synopsis' && (
                 <StepContent
                   title="Synopsis"
-                  description="Le coeur de votre histoire résumé en quelques paragraphes."
+                  description="Le coeur de votre histoire rÃ©sumÃ© en quelques paragraphes."
                   onAiAssist={() => handleAiAssist('synopsis')}
                   isAiLoading={isAiLoading}
                 >
@@ -470,13 +524,13 @@ Traitement: ${project.treatment}`;
 
               {currentStep === 'developedSynopsis' && (
                 <StepContent
-                  title="Synopsis développé"
+                  title="Synopsis dÃ©veloppÃ©"
                   description="Approfondissez l'intrigue, les personnages et les arcs dramatiques."
                   onAiAssist={() => handleAiAssist('developedSynopsis')}
                   isAiLoading={isAiLoading}
                 >
                   <Textarea
-                    placeholder="Décrivez l'évolution de l'intrigue en détail..."
+                    placeholder="DÃ©crivez l'Ã©volution de l'intrigue en dÃ©tail..."
                     className="min-h-[520px] resize-none border-none bg-transparent p-0 text-lg leading-relaxed shadow-none focus-visible:ring-0"
                     value={project.developedSynopsis}
                     onChange={(event) => updateProject({ developedSynopsis: event.target.value })}
@@ -499,12 +553,12 @@ Traitement: ${project.treatment}`;
               {currentStep === 'treatment' && (
                 <StepContent
                   title="Traitement"
-                  description="Narratif au présent de l'indicatif. Donnez vie aux actions, au rythme et aux nuances."
+                  description="Narratif au prÃ©sent de l'indicatif. Donnez vie aux actions, au rythme et aux nuances."
                   onAiAssist={() => handleAiAssist('treatment')}
                   isAiLoading={isAiLoading}
                 >
                   <Textarea
-                    placeholder="Jean entre dans la pièce. Il sent la tension monter..."
+                    placeholder="Jean entre dans la piÃ¨ce. Il sent la tension monter..."
                     className="min-h-[520px] resize-none border-none bg-transparent p-0 text-lg leading-relaxed shadow-none focus-visible:ring-0"
                     value={project.treatment}
                     onChange={(event) => updateProject({ treatment: event.target.value })}
@@ -514,14 +568,14 @@ Traitement: ${project.treatment}`;
 
               {currentStep === 'screenplay' && (
                 <StepContent
-                  title="Scénario"
-                  description="Version au format de lecture: séquences, action, dialogues."
+                  title="ScÃ©nario"
+                  description="Version au format de lecture: sÃ©quences, action, dialogues."
                   onAiAssist={() => handleAiAssist('screenplay')}
                   isAiLoading={isAiLoading}
                 >
                   <div className="mx-auto min-h-[760px] max-w-3xl rounded-sm bg-white p-6 font-mono text-[15px] leading-tight text-black shadow-2xl sm:p-12">
                     <Textarea
-                      placeholder={'INT. BUREAU - JOUR\n\nJEAN est assis à son bureau...'}
+                      placeholder={'INT. BUREAU - JOUR\n\nJEAN est assis Ã  son bureau...'}
                       className="min-h-[680px] resize-none whitespace-pre-wrap border-none bg-transparent p-0 font-mono shadow-none focus-visible:ring-0"
                       value={project.screenplay}
                       onChange={(event) => updateProject({ screenplay: event.target.value })}
@@ -588,7 +642,7 @@ function StepContent({
           disabled={isAiLoading}
         >
           <Wand2 size={14} className={cn('mr-2', isAiLoading && 'animate-spin')} />
-          {isAiLoading ? 'Génération...' : 'Assistant IA'}
+          {isAiLoading ? 'GÃ©nÃ©ration...' : 'Assistant IA'}
         </Button>
       </div>
 
@@ -640,10 +694,10 @@ function SceneBoard({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 rounded-lg border border-[#393E46] bg-[#EEEEEE] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <span className="text-xs font-semibold uppercase tracking-widest text-[#393E46]">Tableau de séquences</span>
+          <span className="text-xs font-semibold uppercase tracking-widest text-[#393E46]">Tableau de sÃ©quences</span>
           <div className="mt-2 flex flex-wrap gap-2">
-            <Badge className="bg-[#393E46] text-[#FFFFFF]">{scenes.length} scènes</Badge>
-            <Badge className="bg-[#393E46] text-[#FFFFFF]">{Math.round(scenes.length * 1.5)} min estimées</Badge>
+            <Badge className="bg-[#393E46] text-[#FFFFFF]">{scenes.length} scÃ¨nes</Badge>
+            <Badge className="bg-[#393E46] text-[#FFFFFF]">{Math.round(scenes.length * 1.5)} min estimÃ©es</Badge>
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -653,7 +707,7 @@ function SceneBoard({
           </Button>
           <Button onClick={onAddScene} className="bg-[#FFD369] px-4 font-bold text-black hover:bg-[#FFD369]/90">
             <Plus size={16} className="mr-2" />
-            Nouvelle scène
+            Nouvelle scÃ¨ne
           </Button>
         </div>
       </div>
@@ -715,13 +769,13 @@ function SceneBoard({
                 <Badge className="bg-[#393E46] text-[9px] uppercase tracking-wider text-[#FFFFFF]">{scene.type}</Badge>
                 <h3 className="font-serif text-base italic leading-snug text-[#222831]">{scene.title}</h3>
                 <p className="line-clamp-4 text-sm leading-relaxed text-[#222831]/70">
-                  {scene.description || 'Aucune description de scène.'}
+                  {scene.description || 'Aucune description de scÃ¨ne.'}
                 </p>
               </div>
 
               <div className="mt-auto flex items-center justify-between gap-3 border-t border-[#393E46]/10 pt-3">
                 <span className="truncate font-serif text-[11px] italic text-[#222831]/40">
-                  {scene.dramaticInfo || 'Information dramatique à définir'}
+                  {scene.dramaticInfo || 'Information dramatique Ã  dÃ©finir'}
                 </span>
                 <div className="flex items-center gap-1">
                   <Button variant="ghost" size="icon-xs" className="text-[#393E46] hover:text-[#222831]" onClick={() => onEditScene(scene)}>
@@ -740,10 +794,10 @@ function SceneBoard({
       {scenes.length === 0 && (
         <div className="flex min-h-[300px] flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#393E46] text-center text-[#393E46]/55">
           <LayoutDashboard size={48} strokeWidth={1} className="mb-4 opacity-30" />
-          <p className="text-xs uppercase tracking-widest">Commencez la construction de votre récit</p>
+          <p className="text-xs uppercase tracking-widest">Commencez la construction de votre rÃ©cit</p>
           <Button variant="outline" className="mt-6 border-[#393E46] hover:border-[#FFD369] hover:text-[#222831]" onClick={onAddScene}>
             <Plus size={16} className="mr-2" />
-            Insérer une scène
+            InsÃ©rer une scÃ¨ne
           </Button>
         </div>
       )}
@@ -766,7 +820,7 @@ function SceneDialog({
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-2xl overflow-hidden rounded-lg border-[#393E46] bg-[#EEEEEE] p-0 shadow-2xl">
         <DialogHeader className="border-b border-[#393E46] bg-[#EEEEEE] p-6">
-          <DialogTitle className="text-xs font-bold uppercase tracking-widest text-[#222831]">Détails de la scène</DialogTitle>
+          <DialogTitle className="text-xs font-bold uppercase tracking-widest text-[#222831]">DÃ©tails de la scÃ¨ne</DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-6 p-6 sm:p-8">
@@ -774,7 +828,7 @@ function SceneDialog({
             <Field label="Titre">
               <Input value={scene.title} onChange={(event) => onChange({ ...scene, title: event.target.value })} className="h-10 rounded border-[#393E46] bg-[#FFFFFF] text-sm" />
             </Field>
-            <Field label="Type de séquence">
+            <Field label="Type de sÃ©quence">
               <Select value={scene.type} onValueChange={(value: SceneType) => onChange({ ...scene, type: value })}>
                 <SelectTrigger className="h-10 rounded border-[#393E46] bg-[#FFFFFF] text-sm">
                   <SelectValue />
@@ -794,12 +848,12 @@ function SceneDialog({
             <Input value={scene.indications} onChange={(event) => onChange({ ...scene, indications: event.target.value })} className="h-10 rounded border-[#393E46] bg-[#FFFFFF] font-mono text-sm" placeholder="ex: INT. SALON - NUIT" />
           </Field>
 
-          <Field label="Description littéraire">
-            <Textarea value={scene.description} onChange={(event) => onChange({ ...scene, description: event.target.value })} className="h-28 resize-none rounded border-[#393E46] bg-[#FFFFFF] p-3 font-serif text-sm italic leading-relaxed text-[#393E46]" placeholder="Le héros découvre la vérité sur son passé..." />
+          <Field label="Description littÃ©raire">
+            <Textarea value={scene.description} onChange={(event) => onChange({ ...scene, description: event.target.value })} className="h-28 resize-none rounded border-[#393E46] bg-[#FFFFFF] p-3 font-serif text-sm italic leading-relaxed text-[#393E46]" placeholder="Le hÃ©ros dÃ©couvre la vÃ©ritÃ© sur son passÃ©..." />
           </Field>
 
-          <Field label="Information dramatique clé">
-            <Textarea value={scene.dramaticInfo} onChange={(event) => onChange({ ...scene, dramaticInfo: event.target.value })} className="h-24 resize-none rounded border-[#393E46] bg-[#FFFFFF] p-3 font-serif text-sm italic leading-relaxed text-[#393E46]" placeholder="Révélation, décision, retournement, dette dramatique..." />
+          <Field label="Information dramatique clÃ©">
+            <Textarea value={scene.dramaticInfo} onChange={(event) => onChange({ ...scene, dramaticInfo: event.target.value })} className="h-24 resize-none rounded border-[#393E46] bg-[#FFFFFF] p-3 font-serif text-sm italic leading-relaxed text-[#393E46]" placeholder="RÃ©vÃ©lation, dÃ©cision, retournement, dette dramatique..." />
           </Field>
         </div>
 

@@ -83,3 +83,12 @@ Sigma laisse les utilisateurs cr?er un compte Supabase, mais bloque l'acc?s ? l'
 5. Passez sa colonne `approved` de `false` ? `true` pour autoriser l'acc?s.
 
 Tant que `approved` vaut `false`, l'utilisateur voit une page d'attente dans Sigma.
+## Installer Sigma comme application
+
+Sigma est une PWA: apr?s d?ploiement sur Vercel, elle peut ?tre install?e comme une application sur ordinateur et mobile.
+
+- Sur Chrome ou Edge ordinateur: ouvrez Sigma, puis cliquez sur l?ic?ne d?installation dans la barre d?adresse.
+- Sur Android: ouvrez Sigma dans Chrome, menu `?`, puis `Ajouter ? l??cran d?accueil` ou `Installer l?application`.
+- Sur iPhone/iPad: ouvrez Sigma dans Safari, bouton de partage, puis `Sur l??cran d?accueil`.
+
+L'app fonctionne en mode install? et garde l'?cran principal disponible hors connexion. Les fonctions IA et Supabase n?cessitent une connexion internet.

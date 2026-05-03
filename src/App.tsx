@@ -16,6 +16,8 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  RefreshCw,
+  ShieldCheck,
   Plus,
   Save,
   Trash2,
@@ -45,6 +47,8 @@ import { cn } from '@/lib/utils';
 import { Project, Scene, SceneType, Step } from './types';
 import { AuthPage } from './AuthPage';
 import { supabase } from './supabaseClient';
+
+type AccessStatus = 'checking' | 'pending' | 'approved' | 'error';
 
 const STORAGE_KEY = 'scriptflow_project';
 
@@ -168,6 +172,9 @@ export default function App() {
   const [project, setProject] = useState<Project>(DEFAULT_PROJECT);
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState('');
+  const [accessStatus, setAccessStatus] = useState<AccessStatus>('checking');
+  const [accessMessage, setAccessMessage] = useState('');
+  const [approvalRefreshKey, setApprovalRefreshKey] = useState(0);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>('synopsis');
   const [isLoaded, setIsLoaded] = useState(false);
@@ -186,6 +193,7 @@ export default function App() {
       const user = data.session?.user ?? null;
       setUserId(user?.id ?? null);
       setUserEmail(user?.email ?? '');
+      setAccessStatus(user ? 'checking' : 'pending');
       setIsAuthReady(true);
     });
 
@@ -193,6 +201,8 @@ export default function App() {
       const user = session?.user ?? null;
       setUserId(user?.id ?? null);
       setUserEmail(user?.email ?? '');
+      setAccessStatus(user ? 'checking' : 'pending');
+      setAccessMessage('');
       setProject(DEFAULT_PROJECT);
       setIsLoaded(false);
     });
@@ -201,7 +211,65 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isAuthReady || !userId) {
+    if (!isAuthReady || !userId || !supabase) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const checkApproval = async () => {
+      setAccessStatus('checking');
+      setAccessMessage('');
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('approved')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (isCancelled) {
+        return;
+      }
+
+      if (error) {
+        setAccessStatus('error');
+        setAccessMessage("Impossible de v?rifier l'approbation du compte. V?rifiez la table profiles dans Supabase.");
+        return;
+      }
+
+      if (!data) {
+        const { error: insertError } = await supabase.from('profiles').insert({
+          id: userId,
+          email: userEmail,
+          approved: false,
+        });
+
+        if (isCancelled) {
+          return;
+        }
+
+        if (insertError && insertError.code !== '23505') {
+          setAccessStatus('error');
+          setAccessMessage("Impossible de cr?er la demande d'approbation. V?rifiez les r?gles RLS de la table profiles.");
+          return;
+        }
+
+        setAccessStatus('pending');
+        return;
+      }
+
+      setAccessStatus(data.approved ? 'approved' : 'pending');
+    };
+
+    checkApproval();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [approvalRefreshKey, isAuthReady, userEmail, userId]);
+
+  useEffect(() => {
+    if (!isAuthReady || !userId || accessStatus !== 'approved') {
       return;
     }
 
@@ -220,11 +288,11 @@ export default function App() {
   }, [isAuthReady, userId]);
 
   useEffect(() => {
-    if (isLoaded && userId) {
+    if (isLoaded && userId && accessStatus === 'approved') {
       localStorage.setItem(STORAGE_KEY + ':' + userId, JSON.stringify(project));
       setStatusMessage('Sauvegardé automatiquement.');
     }
-  }, [project, isLoaded, userId]);
+  }, [accessStatus, project, isLoaded, userId]);
 
   const progress = useMemo(() => {
     const completed = [
@@ -358,7 +426,13 @@ Traitement: ${project.treatment}`;
   };
 
   const signOut = async () => {
+    setAccessStatus('pending');
+    setAccessMessage('');
     await supabase?.auth.signOut();
+  };
+
+  const refreshApproval = () => {
+    setApprovalRefreshKey((value) => value + 1);
   };
 
   if (!isAuthReady) {
@@ -367,6 +441,22 @@ Traitement: ${project.treatment}`;
 
   if (!userId) {
     return <AuthPage />;
+  }
+
+  if (accessStatus === 'checking') {
+    return <FullScreenNotice title="V?rification du compte" message="Nous v?rifions votre statut d'approbation." />;
+  }
+
+  if (accessStatus !== 'approved') {
+    return (
+      <PendingApprovalPage
+        email={userEmail}
+        message={accessMessage}
+        isError={accessStatus === 'error'}
+        onRefresh={refreshApproval}
+        onSignOut={signOut}
+      />
+    );
   }
 
   if (!isLoaded) {
@@ -602,6 +692,69 @@ Traitement: ${project.treatment}`;
         {statusMessage}
       </footer>
     </div>
+  );
+}
+
+function FullScreenNotice({ title, message }: { title: string; message: string }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#FFFFFF] px-4 text-[#222831]">
+      <Card className="w-full max-w-md border-[#393E46] bg-[#EEEEEE] p-6 text-center shadow-2xl">
+        <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded bg-[#FFD369] text-black">
+          <ShieldCheck size={24} />
+        </div>
+        <h1 className="font-serif text-2xl italic">{title}</h1>
+        <p className="mt-3 text-sm leading-relaxed text-[#393E46]">{message}</p>
+      </Card>
+    </main>
+  );
+}
+
+function PendingApprovalPage({
+  email,
+  message,
+  isError,
+  onRefresh,
+  onSignOut,
+}: {
+  email: string;
+  message: string;
+  isError: boolean;
+  onRefresh: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#FFFFFF] px-4 text-[#222831]">
+      <Card className="w-full max-w-md border-[#393E46] bg-[#EEEEEE] p-6 shadow-2xl">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded bg-[#FFD369] text-black">
+            <ShieldCheck size={22} />
+          </div>
+          <div>
+            <h1 className="font-serif text-2xl italic">Acc?s en attente</h1>
+            <p className="text-xs uppercase tracking-widest text-[#393E46]">Validation manuelle</p>
+          </div>
+        </div>
+
+        <p className="text-sm leading-relaxed text-[#393E46]">
+          Votre compte {email ? <strong className="text-[#222831]">{email}</strong> : null} est cr??, mais il doit ?tre approuv? manuellement avant d'acc?der ? Sigma.
+        </p>
+
+        <p className={cn('mt-4 rounded border p-3 text-sm', isError ? 'border-red-500 bg-white text-red-700' : 'border-[#393E46] bg-[#FFFFFF] text-[#393E46]')}>
+          {message || "Vous pourrez entrer dans l'application d?s que l'administrateur aura activ? votre acc?s dans Supabase."}
+        </p>
+
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+          <Button className="bg-[#FFD369] font-bold text-[#222831] hover:bg-[#FFD369]/90" onClick={onRefresh}>
+            <RefreshCw size={15} className="mr-2" />
+            V?rifier
+          </Button>
+          <Button variant="outline" className="border-[#393E46]" onClick={onSignOut}>
+            <LogOut size={15} className="mr-2" />
+            Se d?connecter
+          </Button>
+        </div>
+      </Card>
+    </main>
   );
 }
 

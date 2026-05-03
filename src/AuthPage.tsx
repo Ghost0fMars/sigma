@@ -15,7 +15,7 @@ export function AuthPage() {
 
   const submit = async () => {
     if (!supabase) {
-      setMessage('Supabase n’est pas encore configuré.');
+      setMessage("Supabase n'est pas encore configuré.");
       return;
     }
 
@@ -30,7 +30,7 @@ export function AuthPage() {
     if (result.error) {
       setMessage(result.error.message);
     } else if (mode === 'signup') {
-      setMessage('Compte créé. Vérifiez votre email si Supabase demande une confirmation.');
+      setMessage("Compte créé. Votre accès restera en attente jusqu'à l'approbation manuelle de l'administrateur.");
     }
 
     setIsLoading(false);
@@ -102,7 +102,7 @@ export function AuthPage() {
           {!isSupabaseConfigured && (
             <p className="rounded border border-[#393E46] bg-[#FFFFFF] p-3 text-sm text-[#393E46]">
               Ajoutez `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` dans Vercel pour activer
-              l’authentification.
+              l'authentification.
             </p>
           )}
 

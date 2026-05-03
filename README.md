@@ -72,3 +72,14 @@ La clé OpenAI reste côté serveur via la fonction Vercel `/api/generate`; elle
 5. Ajoutez ces deux valeurs dans Vercel avec `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY`.
 
 Les projets d'écriture restent pour l'instant sauvegardés dans le navigateur, mais isolés par utilisateur connecté. Une prochaine étape pourra synchroniser les projets dans une table Supabase.
+## Approbation manuelle des comptes
+
+Sigma laisse les utilisateurs cr?er un compte Supabase, mais bloque l'acc?s ? l'application tant que leur compte n'est pas approuv?.
+
+1. Dans Supabase, ouvrez `SQL Editor`.
+2. Collez et ex?cutez le contenu de `supabase/manual-approval.sql`.
+3. Laissez les inscriptions activ?es dans `Authentication > Providers > Email`.
+4. Quand un utilisateur s'inscrit, ouvrez `Table Editor > profiles`.
+5. Passez sa colonne `approved` de `false` ? `true` pour autoriser l'acc?s.
+
+Tant que `approved` vaut `false`, l'utilisateur voit une page d'attente dans Sigma.

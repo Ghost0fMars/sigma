@@ -233,7 +233,7 @@ export default function App() {
 
       if (error) {
         setAccessStatus('error');
-        setAccessMessage("Impossible de v?rifier l'approbation du compte. V?rifiez la table profiles dans Supabase.");
+        setAccessMessage("Impossible de vérifier l'approbation du compte. Exécutez d'abord le SQL supabase/manual-approval.sql dans Supabase.");
         return;
       }
 
@@ -250,7 +250,7 @@ export default function App() {
 
         if (insertError && insertError.code !== '23505') {
           setAccessStatus('error');
-          setAccessMessage("Impossible de cr?er la demande d'approbation. V?rifiez les r?gles RLS de la table profiles.");
+          setAccessMessage("Impossible de créer la demande d'approbation. Vérifiez les règles RLS de la table profiles.");
           return;
         }
 
@@ -444,7 +444,7 @@ Traitement: ${project.treatment}`;
   }
 
   if (accessStatus === 'checking') {
-    return <FullScreenNotice title="V?rification du compte" message="Nous v?rifions votre statut d'approbation." />;
+    return <FullScreenNotice title="Vérification du compte" message="Nous vérifions votre statut d'approbation." />;
   }
 
   if (accessStatus !== 'approved') {
@@ -510,7 +510,7 @@ Traitement: ${project.treatment}`;
             <Button variant="ghost" size="sm" className="hidden text-[#222831]/45 hover:text-[#222831] sm:inline-flex" onClick={resetProject}>
               Effacer
             </Button>
-            <Button variant="ghost" size="icon-sm" className="text-[#393E46] hover:text-[#222831]" onClick={signOut} title="Se d?connecter">
+            <Button variant="ghost" size="icon-sm" className="text-[#393E46] hover:text-[#222831]" onClick={signOut} title="Se déconnecter">
               <LogOut size={16} />
             </Button>
             <Button variant="outline" size="sm" className="border-[#393E46] text-xs uppercase tracking-widest" onClick={exportProject}>
@@ -730,27 +730,27 @@ function PendingApprovalPage({
             <ShieldCheck size={22} />
           </div>
           <div>
-            <h1 className="font-serif text-2xl italic">Acc?s en attente</h1>
+            <h1 className="font-serif text-2xl italic">Accès en attente</h1>
             <p className="text-xs uppercase tracking-widest text-[#393E46]">Validation manuelle</p>
           </div>
         </div>
 
         <p className="text-sm leading-relaxed text-[#393E46]">
-          Votre compte {email ? <strong className="text-[#222831]">{email}</strong> : null} est cr??, mais il doit ?tre approuv? manuellement avant d'acc?der ? Sigma.
+          Votre compte {email ? <strong className="text-[#222831]">{email}</strong> : null} est créé, mais il doit être approuvé manuellement avant d'accéder à Sigma.
         </p>
 
         <p className={cn('mt-4 rounded border p-3 text-sm', isError ? 'border-red-500 bg-white text-red-700' : 'border-[#393E46] bg-[#FFFFFF] text-[#393E46]')}>
-          {message || "Vous pourrez entrer dans l'application d?s que l'administrateur aura activ? votre acc?s dans Supabase."}
+          {message || "Vous pourrez entrer dans l'application dès que l'administrateur aura activé votre accès dans Supabase."}
         </p>
 
         <div className="mt-6 grid gap-2 sm:grid-cols-2">
           <Button className="bg-[#FFD369] font-bold text-[#222831] hover:bg-[#FFD369]/90" onClick={onRefresh}>
             <RefreshCw size={15} className="mr-2" />
-            V?rifier
+            Vérifier
           </Button>
           <Button variant="outline" className="border-[#393E46]" onClick={onSignOut}>
             <LogOut size={15} className="mr-2" />
-            Se d?connecter
+            Se déconnecter
           </Button>
         </div>
       </Card>

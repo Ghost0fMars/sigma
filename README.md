@@ -74,21 +74,21 @@ La clé OpenAI reste côté serveur via la fonction Vercel `/api/generate`; elle
 Les projets d'écriture restent pour l'instant sauvegardés dans le navigateur, mais isolés par utilisateur connecté. Une prochaine étape pourra synchroniser les projets dans une table Supabase.
 ## Approbation manuelle des comptes
 
-Sigma laisse les utilisateurs cr?er un compte Supabase, mais bloque l'acc?s ? l'application tant que leur compte n'est pas approuv?.
+Sigma laisse les utilisateurs créer un compte Supabase, mais bloque l'accès ? l'application tant que leur compte n'est pas approuvé.
 
 1. Dans Supabase, ouvrez `SQL Editor`.
-2. Collez et ex?cutez le contenu de `supabase/manual-approval.sql`.
-3. Laissez les inscriptions activ?es dans `Authentication > Providers > Email`.
+2. Collez et exécutez le contenu de `supabase/manual-approval.sql`.
+3. Laissez les inscriptions activées dans `Authentication > Providers > Email`.
 4. Quand un utilisateur s'inscrit, ouvrez `Table Editor > profiles`.
-5. Passez sa colonne `approved` de `false` ? `true` pour autoriser l'acc?s.
+5. Passez sa colonne `approved` de `false` à `true` pour autoriser l'accès.
 
 Tant que `approved` vaut `false`, l'utilisateur voit une page d'attente dans Sigma.
 ## Installer Sigma comme application
 
-Sigma est une PWA: apr?s d?ploiement sur Vercel, elle peut ?tre install?e comme une application sur ordinateur et mobile.
+Sigma est une PWA: après déploiement sur Vercel, elle peut être installée comme une application sur ordinateur et mobile.
 
-- Sur Chrome ou Edge ordinateur: ouvrez Sigma, puis cliquez sur l?ic?ne d?installation dans la barre d?adresse.
-- Sur Android: ouvrez Sigma dans Chrome, menu `?`, puis `Ajouter ? l??cran d?accueil` ou `Installer l?application`.
-- Sur iPhone/iPad: ouvrez Sigma dans Safari, bouton de partage, puis `Sur l??cran d?accueil`.
+- Sur Chrome ou Edge ordinateur: ouvrez Sigma, puis cliquez sur l'icône d'installation dans la barre d'adresse.
+- Sur Android: ouvrez Sigma dans Chrome, menu `⋮`, puis `Ajouter à l'écran d'accueil` ou `Installer l'application`.
+- Sur iPhone/iPad: ouvrez Sigma dans Safari, bouton de partage, puis `Sur l'écran d'accueil`.
 
-L'app fonctionne en mode install? et garde l'?cran principal disponible hors connexion. Les fonctions IA et Supabase n?cessitent une connexion internet.
+L'app fonctionne en mode installé et garde l'écran principal disponible hors connexion. Les fonctions IA et Supabase nécessitent une connexion internet.

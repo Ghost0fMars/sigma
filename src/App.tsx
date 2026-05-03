@@ -285,7 +285,7 @@ export default function App() {
       setProject(DEFAULT_PROJECT);
     }
     setIsLoaded(true);
-  }, [isAuthReady, userId]);
+  }, [accessStatus, isAuthReady, userId]);
 
   useEffect(() => {
     if (isLoaded && userId && accessStatus === 'approved') {
@@ -460,7 +460,7 @@ Traitement: ${project.treatment}`;
   }
 
   if (!isLoaded) {
-    return null;
+    return <FullScreenNotice title="Chargement de Sigma" message="Votre espace d'écriture se prépare." />;
   }
 
   return (

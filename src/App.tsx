@@ -11,6 +11,7 @@ import {
   Download,
   Edit3,
   FileText,
+  FolderOpen,
   GripVertical,
   Info,
   LayoutDashboard,
@@ -50,8 +51,18 @@ import { AuthPage } from './AuthPage';
 import { supabase } from './supabaseClient';
 
 type AccessStatus = 'checking' | 'pending' | 'approved' | 'error';
+type AppView = 'projects' | 'editor';
+
+type SavedProject = {
+  id: string;
+  title: string;
+  updatedAt: string;
+  project: Project;
+};
 
 const STORAGE_KEY = 'scriptflow_project';
+const PROJECTS_KEY = 'sigma_projects';
+const CURRENT_PROJECT_ID_KEY = 'sigma_current_project_id';
 
 const DEFAULT_PROJECT: Project = {
   title: 'Sans titre',
@@ -85,6 +96,25 @@ function normalizeProject(value: unknown): Project {
     ...project,
     scenes: Array.isArray(project.scenes) ? project.scenes : [],
   };
+}
+
+function normalizeSavedProjects(value: unknown): SavedProject[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is Partial<SavedProject> => Boolean(item && typeof item === 'object'))
+    .map((item) => ({
+      id: typeof item.id === 'string' ? item.id : crypto.randomUUID(),
+      title: typeof item.title === 'string' && item.title.trim() ? item.title : 'Sans titre',
+      updatedAt: typeof item.updatedAt === 'string' ? item.updatedAt : new Date().toISOString(),
+      project: normalizeProject(item.project),
+    }));
+}
+
+function getUserStorageKey(key: string, userId: string) {
+  return key + ':' + userId;
 }
 
 function createScene(order: number, overrides: Partial<Scene> = {}): Scene {
@@ -171,6 +201,9 @@ function downloadText(filename: string, text: string) {
 
 export default function App() {
   const [project, setProject] = useState<Project>(DEFAULT_PROJECT);
+  const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState<AppView>('editor');
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState('');
   const [accessStatus, setAccessStatus] = useState<AccessStatus>('checking');
@@ -207,6 +240,9 @@ export default function App() {
       setAccessStatus(user ? 'checking' : 'pending');
       setAccessMessage('');
       setProject(DEFAULT_PROJECT);
+      setSavedProjects([]);
+      setCurrentProjectId(null);
+      setCurrentView('editor');
       setIsLoaded(false);
     });
 
@@ -276,24 +312,48 @@ export default function App() {
       return;
     }
 
-    const saved = localStorage.getItem(STORAGE_KEY + ':' + userId);
-    if (saved) {
-      try {
-        setProject(normalizeProject(JSON.parse(saved)));
-      } catch (error) {
-        console.error('Failed to load project', error);
-        setStatusMessage('Impossible de relire la sauvegarde locale.');
-      }
-    } else {
-      setProject(DEFAULT_PROJECT);
+    const projectsKey = getUserStorageKey(PROJECTS_KEY, userId);
+    const currentIdKey = getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId);
+    const legacyKey = getUserStorageKey(STORAGE_KEY, userId);
+
+    let loadedProjects: SavedProject[] = [];
+    try {
+      loadedProjects = normalizeSavedProjects(JSON.parse(localStorage.getItem(projectsKey) || '[]'));
+    } catch (error) {
+      console.error('Failed to load projects', error);
+      setStatusMessage('Impossible de relire la liste des projets.');
     }
+
+    const storedCurrentId = localStorage.getItem(currentIdKey);
+    const selectedProject = loadedProjects.find((item) => item.id === storedCurrentId) ?? loadedProjects[0];
+
+    if (selectedProject) {
+      setProject(selectedProject.project);
+      setCurrentProjectId(selectedProject.id);
+      setCurrentView('projects');
+    } else {
+      const legacySaved = localStorage.getItem(legacyKey);
+      if (legacySaved) {
+        try {
+          setProject(normalizeProject(JSON.parse(legacySaved)));
+        } catch (error) {
+          console.error('Failed to load legacy project', error);
+          setProject(DEFAULT_PROJECT);
+        }
+      } else {
+        setProject(DEFAULT_PROJECT);
+      }
+      setCurrentProjectId(null);
+      setCurrentView('editor');
+    }
+
+    setSavedProjects(loadedProjects);
     setIsLoaded(true);
   }, [accessStatus, isAuthReady, userId]);
 
   useEffect(() => {
     if (isLoaded && userId && accessStatus === 'approved') {
-      localStorage.setItem(STORAGE_KEY + ':' + userId, JSON.stringify(project));
-      setStatusMessage('Sauvegardé automatiquement.');
+      localStorage.setItem(getUserStorageKey(STORAGE_KEY, userId), JSON.stringify(project));
     }
   }, [accessStatus, project, isLoaded, userId]);
 
@@ -320,8 +380,85 @@ export default function App() {
     };
   }, [project]);
 
+  const persistSavedProjects = (projects: SavedProject[]) => {
+    if (!userId) {
+      return;
+    }
+
+    setSavedProjects(projects);
+    localStorage.setItem(getUserStorageKey(PROJECTS_KEY, userId), JSON.stringify(projects));
+  };
+
   const updateProject = (updates: Partial<Project>) => {
     setProject((prev) => ({ ...prev, ...updates }));
+  };
+
+  const saveCurrentProject = () => {
+    if (!userId) {
+      return;
+    }
+
+    const id = currentProjectId ?? crypto.randomUUID();
+    const now = new Date().toISOString();
+    const title = project.title.trim() || 'Sans titre';
+    const savedProject: SavedProject = {
+      id,
+      title,
+      updatedAt: now,
+      project: { ...project, title },
+    };
+
+    const nextProjects = [savedProject, ...savedProjects.filter((item) => item.id !== id)];
+    setProject(savedProject.project);
+    setCurrentProjectId(id);
+    persistSavedProjects(nextProjects);
+    localStorage.setItem(getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId), id);
+    setStatusMessage('Projet sauvegard?.');
+  };
+
+  const openSavedProject = (savedProject: SavedProject) => {
+    if (!userId) {
+      return;
+    }
+
+    setProject(savedProject.project);
+    setCurrentProjectId(savedProject.id);
+    setCurrentStep('synopsis');
+    setCurrentView('editor');
+    setAnalysisSuggestions({});
+    localStorage.setItem(getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId), savedProject.id);
+    setStatusMessage('Projet ouvert.');
+  };
+
+  const createNewProject = () => {
+    setProject({ ...DEFAULT_PROJECT, title: 'Sans titre' });
+    setCurrentProjectId(null);
+    setCurrentStep('synopsis');
+    setCurrentView('editor');
+    setAnalysisSuggestions({});
+    setStatusMessage('Nouveau projet prêt.');
+  };
+
+  const deleteSavedProject = (id: string) => {
+    const confirmed = window.confirm('Supprimer ce projet sauvegard? ?');
+    if (!confirmed) {
+      return;
+    }
+
+    const nextProjects = savedProjects.filter((item) => item.id !== id);
+    persistSavedProjects(nextProjects);
+    if (currentProjectId === id) {
+      setCurrentProjectId(null);
+      setProject(nextProjects[0]?.project ?? DEFAULT_PROJECT);
+      if (userId) {
+        if (nextProjects[0]) {
+          localStorage.setItem(getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId), nextProjects[0].id);
+        } else {
+          localStorage.removeItem(getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId));
+        }
+      }
+    }
+    setStatusMessage('Projet supprim?.');
   };
 
   const handleAiAssist = async (stepId: Step) => {
@@ -564,13 +701,28 @@ ${getStepSnapshot(stepId)}`;
           </div>
 
           <nav className="hidden items-center md:flex">
+            <button
+              onClick={() => setCurrentView('projects')}
+              className={cn(
+                'flex h-11 items-center gap-2 border-b-2 px-4 text-sm font-medium transition-colors',
+                currentView === 'projects'
+                  ? 'border-[#FFD369] bg-[#FFD369] text-[#222831]'
+                  : 'border-transparent text-[#222831]/55 hover:text-[#222831]',
+              )}
+            >
+              <FolderOpen size={14} />
+              Mes Projets
+            </button>
             {steps.map((step, index) => {
               const Icon = step.icon;
               const isActive = currentStep === step.id;
               return (
                 <button
                   key={step.id}
-                  onClick={() => setCurrentStep(step.id)}
+                  onClick={() => {
+                    setCurrentView('editor');
+                    setCurrentStep(step.id);
+                  }}
                   className={cn(
                     'flex h-11 items-center gap-2 border-b-2 px-4 text-sm font-medium transition-colors',
                     isActive
@@ -591,6 +743,10 @@ ${getStepSnapshot(stepId)}`;
               <Menu size={17} />
             </Button>
             <span className="hidden max-w-[180px] truncate text-xs text-[#393E46] lg:inline">{userEmail}</span>
+            <Button variant="outline" size="sm" className="hidden border-[#393E46] text-xs uppercase tracking-widest sm:inline-flex" onClick={saveCurrentProject}>
+              <Save size={14} className="mr-2" />
+              Sauvegarder
+            </Button>
             <Button variant="ghost" size="sm" className="hidden text-[#222831]/45 hover:text-[#222831] sm:inline-flex" onClick={resetProject}>
               Effacer
             </Button>
@@ -606,10 +762,30 @@ ${getStepSnapshot(stepId)}`;
 
         {isMobileNavOpen && (
           <div className="mx-auto mt-3 grid max-w-7xl grid-cols-1 gap-2 md:hidden">
+            <button
+              onClick={() => {
+                setCurrentView('projects');
+                setIsMobileNavOpen(false);
+              }}
+              className={cn(
+                'rounded border border-[#393E46] px-3 py-2 text-left text-sm',
+                currentView === 'projects' && 'border-[#FFD369] bg-[#FFD369] text-[#222831]',
+              )}
+            >
+              Mes Projets
+            </button>
+            <Button variant="outline" className="justify-start border-[#393E46]" onClick={() => {
+              saveCurrentProject();
+              setIsMobileNavOpen(false);
+            }}>
+              <Save size={14} className="mr-2" />
+              Sauvegarder
+            </Button>
             {steps.map((step) => (
               <button
                 key={step.id}
                 onClick={() => {
+                  setCurrentView('editor');
                   setCurrentStep(step.id);
                   setIsMobileNavOpen(false);
                 }}
@@ -672,6 +848,15 @@ ${getStepSnapshot(stepId)}`;
         </aside>
 
         <section className="min-w-0">
+          {currentView === 'projects' ? (
+            <ProjectsPage
+              projects={savedProjects}
+              currentProjectId={currentProjectId}
+              onCreateProject={createNewProject}
+              onOpenProject={openSavedProject}
+              onDeleteProject={deleteSavedProject}
+            />
+          ) : (
           <AnimatePresence mode="wait">
             <motion.div
               key={currentStep}
@@ -774,6 +959,7 @@ ${getStepSnapshot(stepId)}`;
               )}
             </motion.div>
           </AnimatePresence>
+          )}
         </section>
       </main>
 
@@ -790,6 +976,82 @@ ${getStepSnapshot(stepId)}`;
         <Info size={10} />
         {statusMessage}
       </footer>
+    </div>
+  );
+}
+
+function ProjectsPage({
+  projects,
+  currentProjectId,
+  onCreateProject,
+  onOpenProject,
+  onDeleteProject,
+}: {
+  projects: SavedProject[];
+  currentProjectId: string | null;
+  onCreateProject: () => void;
+  onOpenProject: (project: SavedProject) => void;
+  onDeleteProject: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 border-b border-[#393E46] pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="font-serif text-3xl italic text-[#222831]">Mes Projets</h2>
+          <p className="mt-1 text-sm text-[#393E46]">Retrouvez vos scénarios sauvegardés sur cet appareil.</p>
+        </div>
+        <Button onClick={onCreateProject} className="bg-[#FFD369] px-4 font-bold text-black hover:bg-[#FFD369]/90">
+          <Plus size={16} className="mr-2" />
+          Nouveau projet
+        </Button>
+      </div>
+
+      {projects.length === 0 ? (
+        <Card className="flex min-h-[320px] flex-col items-center justify-center border-[#393E46] bg-[#EEEEEE] p-8 text-center">
+          <FolderOpen size={44} className="mb-4 text-[#393E46]/50" />
+          <p className="font-serif text-xl italic text-[#222831]">Aucun projet sauvegard?</p>
+          <p className="mt-2 max-w-md text-sm text-[#393E46]">Créez un projet, puis utilisez le bouton Sauvegarder pour l'ajouter ici.</p>
+          <Button onClick={onCreateProject} className="mt-6 bg-[#FFD369] px-4 font-bold text-black hover:bg-[#FFD369]/90">
+            <Plus size={16} className="mr-2" />
+            Commencer
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {projects.map((savedProject) => (
+            <Card key={savedProject.id} className="flex min-h-44 flex-col border-[#393E46] bg-[#EEEEEE] p-4 shadow-lg">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="truncate font-serif text-xl italic text-[#222831]">{savedProject.title}</h3>
+                  <p className="mt-1 text-xs uppercase tracking-widest text-[#393E46]">
+                    {new Date(savedProject.updatedAt).toLocaleDateString('fr-FR', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+                {currentProjectId === savedProject.id && <Badge className="bg-[#FFD369] text-[#222831]">Ouvert</Badge>}
+              </div>
+
+              <p className="mt-4 line-clamp-3 text-sm leading-relaxed text-[#393E46]">
+                {savedProject.project.logline || savedProject.project.synopsis || 'Aucune logline renseignée.'}
+              </p>
+
+              <div className="mt-auto flex gap-2 pt-5">
+                <Button className="flex-1 bg-[#FFD369] font-bold text-black hover:bg-[#FFD369]/90" onClick={() => onOpenProject(savedProject)}>
+                  Ouvrir
+                </Button>
+                <Button variant="outline" size="icon-sm" className="border-[#393E46] text-[#393E46] hover:text-red-500" onClick={() => onDeleteProject(savedProject.id)}>
+                  <Trash2 size={14} />
+                </Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

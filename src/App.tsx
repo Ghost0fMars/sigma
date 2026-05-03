@@ -20,7 +20,6 @@ import {
   Trash2,
   Wand2,
 } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -45,8 +44,6 @@ import { cn } from '@/lib/utils';
 import { Project, Scene, SceneType, Step } from './types';
 
 const STORAGE_KEY = 'scriptflow_project';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 const DEFAULT_PROJECT: Project = {
   title: 'Sans titre',
@@ -221,11 +218,6 @@ export default function App() {
   };
 
   const handleAiAssist = async (stepId: Step) => {
-    if (!GEMINI_API_KEY) {
-      setStatusMessage('Clé API Gemini manquante. Ajoutez GEMINI_API_KEY dans .env.local.');
-      return;
-    }
-
     setIsAiLoading(true);
     setStatusMessage('Génération IA en cours...');
     try {
@@ -244,12 +236,18 @@ Traitement: ${project.treatment}`;
         screenplay: `Transforme le traitement en extrait de scénario professionnel français: intitulés INT./EXT., action au présent, dialogues lisibles. Réponds uniquement avec le scénario.\n\n${context}`,
       };
 
-      const response = await genAI.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompts[stepId],
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: prompts[stepId] }),
       });
 
-      const newText = response.text?.trim() || '';
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'OpenAI request failed');
+      }
+
+      const newText = typeof data.text === 'string' ? data.text.trim() : '';
       if (!newText) {
         setStatusMessage("L'IA n'a pas renvoyé de contenu exploitable.");
         return;
@@ -277,8 +275,8 @@ Traitement: ${project.treatment}`;
 
       setStatusMessage('Proposition IA intégrée.');
     } catch (error) {
-      console.error('Gemini Error:', error);
-      setStatusMessage("La génération IA a échoué. Vérifiez la clé API et le format renvoyé.");
+      console.error('OpenAI Error:', error);
+      setStatusMessage("La génération IA a échoué. Vérifiez OPENAI_API_KEY dans Vercel ou .env.local.");
     } finally {
       setIsAiLoading(false);
     }

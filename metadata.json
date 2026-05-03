@@ -1,0 +1,6 @@
+{
+  "name": "Sigma",
+  "description": "Une application d'aide à l'écriture structurée en 5 étapes : synopsis, synopsis développé, scène-à-scène, traitement et scénario.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

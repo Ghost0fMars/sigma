@@ -1,49 +1,49 @@
 # Sigma
 
-Assistant d'Ã©criture de scÃ©nario construit avec React, Vite et OpenAI.
+Assistant d'écriture de scénario construit avec React, Vite et OpenAI.
 
-## FonctionnalitÃ©s
+## Fonctionnalités
 
-- Parcours d'Ã©criture en cinq Ã©tapes: synopsis, synopsis dÃ©veloppÃ©, scÃ¨ne Ã  scÃ¨ne, traitement, scÃ©nario.
+- Parcours d'écriture en cinq étapes: synopsis, synopsis développé, scène à scène, traitement, scénario.
 - Fiche projet avec titre, logline, notes de travail et progression.
-- Tableau de scÃ¨nes rÃ©ordonnable avec types dramatiques, indications, description et information clÃ©.
-- Assistance IA par Ã©tape, y compris gÃ©nÃ©ration structurÃ©e du scÃ¨ne Ã  scÃ¨ne.
+- Tableau de scènes réordonnable avec types dramatiques, indications, description et information clé.
+- Assistance IA par étape, y compris génération structurée du scène à scène.
 - Sauvegarde automatique dans le navigateur.
 - Export Markdown complet du projet.
 
 ## Lancer localement
 
-PrÃ©requis: Node.js.
+Prérequis: Node.js.
 
-1. Installez les dÃ©pendances:
+1. Installez les dépendances:
    `npm install`
-2. CrÃ©ez un fichier `.env.local` avec votre clÃ© OpenAI:
+2. Créez un fichier `.env.local` avec votre clé OpenAI:
    `OPENAI_API_KEY=votre_cle_openai`\n   `VITE_SUPABASE_URL=https://votre-projet.supabase.co`\n   `VITE_SUPABASE_ANON_KEY=votre_cle_anon_supabase`
 3. Lancez l'application:
    `npm run dev`
 
-L'application est servie par dÃ©faut sur [http://localhost:3000](http://localhost:3000).
+L'application est servie par défaut sur [http://localhost:3000](http://localhost:3000).
 
 ## Sur Windows avec VS Code
 
-Si `npm run dev` est bloquÃ© par PowerShell, lancez plutÃ´t:
+Si `npm run dev` est bloqué par PowerShell, lancez plutôt:
 
 `npm.cmd run dev`
 
 Pour ouvrir directement le projet dans VS Code, double-cliquez sur `open-in-vscode.cmd`.
 
-Vous pouvez aussi utiliser la tÃ¢che VS Code:
+Vous pouvez aussi utiliser la tâche VS Code:
 
 1. Ouvrez le dossier du projet dans VS Code.
 2. Appuyez sur `Ctrl+Shift+P`.
 3. Choisissez `Tasks: Run Task`.
 4. Lancez `Lancer Sigma`.
 
-Alternative simple: double-cliquez sur `start-auteur.cmd` Ã  la racine du projet, puis ouvrez [http://localhost:3000](http://localhost:3000).
+Alternative simple: double-cliquez sur `start-auteur.cmd` à la racine du projet, puis ouvrez [http://localhost:3000](http://localhost:3000).
 
-## DÃ©ployer sur Vercel
+## Déployer sur Vercel
 
-RÃ©glages Vercel recommandÃ©s:
+Réglages Vercel recommandés:
 
 - Framework Preset: `Vite`
 - Build Command: `npm run build`
@@ -52,16 +52,16 @@ RÃ©glages Vercel recommandÃ©s:
 
 Ajoutez aussi les variables d'environnement dans Vercel:
 
-- `OPENAI_API_KEY`: votre clÃ© OpenAI
-- `OPENAI_MODEL`: optionnel, par dÃ©faut `gpt-5`
+- `OPENAI_API_KEY`: votre clé OpenAI
+- `OPENAI_MODEL`: optionnel, par défaut `gpt-5`
 
-La clÃ© OpenAI reste cÃ´tÃ© serveur via la fonction Vercel `/api/generate`; elle n'est pas injectÃ©e dans le navigateur.
+La clé OpenAI reste côté serveur via la fonction Vercel `/api/generate`; elle n'est pas injectée dans le navigateur.
 
 ## Scripts
 
-- `npm run dev`: serveur de dÃ©veloppement Vite.
+- `npm run dev`: serveur de développement Vite.
 - `npm run build`: build de production.
-- `npm run lint`: vÃ©rification TypeScript.
+- `npm run lint`: vérification TypeScript.
 - `npm run clean`: supprime le dossier `dist`.
 ## Configurer Supabase
 

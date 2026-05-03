@@ -14,6 +14,7 @@ import {
   GripVertical,
   Info,
   LayoutDashboard,
+  Lightbulb,
   LogOut,
   Menu,
   RefreshCw,
@@ -180,6 +181,8 @@ export default function App() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [editingScene, setEditingScene] = useState<Scene | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
+  const [analysisSuggestions, setAnalysisSuggestions] = useState<Partial<Record<Step, string>>>({});
   const [statusMessage, setStatusMessage] = useState('Sauvegarde locale prête.');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
@@ -383,6 +386,87 @@ Traitement: ${project.treatment}`;
       setStatusMessage("La génération IA a échoué. Vérifiez OPENAI_API_KEY dans Vercel ou .env.local.");
     } finally {
       setIsAiLoading(false);
+    }
+  };
+
+
+  const getStepSnapshot = (stepId: Step) => {
+    const sceneList = project.scenes
+      .map(
+        (scene, index) =>
+          `${index + 1}. ${scene.title}
+Type: ${scene.type}
+Indications: ${scene.indications}
+Description: ${scene.description || 'Non renseignée'}
+Information dramatique: ${scene.dramaticInfo || 'Non renseignée'}`,
+      )
+      .join('\n\n');
+
+    const snapshots: Record<Step, string> = {
+      synopsis: project.synopsis || 'Aucun synopsis renseigné.',
+      developedSynopsis: project.developedSynopsis || 'Aucun synopsis développé renseigné.',
+      board: sceneList || 'Aucune scène renseignée.',
+      treatment: project.treatment || 'Aucun traitement renseigné.',
+      screenplay: project.screenplay || 'Aucun scénario renseigné.',
+    };
+
+    return snapshots[stepId];
+  };
+
+  const handleAiAnalysis = async (stepId: Step) => {
+    setIsAnalysisLoading(true);
+    setStatusMessage('Analyse IA en cours...');
+
+    try {
+      const stepLabels: Record<Step, string> = {
+        synopsis: 'Synopsis',
+        developedSynopsis: 'Synopsis développé',
+        board: 'Scène à scène',
+        treatment: 'Traitement',
+        screenplay: 'Scénario',
+      };
+
+      const prompt = `Tu es script-doctor et consultant en dramaturgie. Analyse uniquement la page "${stepLabels[stepId]}" de ce projet Sigma.
+
+Objectif: proposer des pistes d'amélioration concrètes sans réécrire le texte à la place de l'auteur.
+
+Réponds en français avec:
+- un diagnostic bref;
+- 5 à 8 pistes d'amélioration actionnables;
+- 2 questions utiles à poser à l'auteur.
+
+Projet:
+Titre: ${project.title}
+Logline: ${project.logline || 'Non renseignée'}
+Notes: ${project.notes || 'Non renseignées'}
+
+Contenu de la page à analyser:
+${getStepSnapshot(stepId)}`;
+
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'OpenAI request failed');
+      }
+
+      const newText = typeof data.text === 'string' ? data.text.trim() : '';
+      if (!newText) {
+        setStatusMessage("L'IA n'a pas renvoyé de pistes exploitables.");
+        return;
+      }
+
+      setAnalysisSuggestions((previous) => ({ ...previous, [stepId]: newText }));
+      setStatusMessage("Pistes d'amélioration prêtes.");
+    } catch (error) {
+      console.error('OpenAI Analysis Error:', error);
+      setStatusMessage("L'analyse IA a échoué. Vérifiez OPENAI_API_KEY dans Vercel ou .env.local.");
+    } finally {
+      setIsAnalysisLoading(false);
     }
   };
 
@@ -601,7 +685,10 @@ Traitement: ${project.treatment}`;
                   title="Synopsis"
                   description="Le coeur de votre histoire résumé en quelques paragraphes."
                   onAiAssist={() => handleAiAssist('synopsis')}
+                  onAiAnalyze={() => handleAiAnalysis('synopsis')}
                   isAiLoading={isAiLoading}
+                  isAnalysisLoading={isAnalysisLoading}
+                  suggestions={analysisSuggestions.synopsis}
                 >
                   <Textarea
                     placeholder="Une phrase simple suffit pour commencer: quelqu'un veut quelque chose, mais..."
@@ -617,7 +704,10 @@ Traitement: ${project.treatment}`;
                   title="Synopsis développé"
                   description="Approfondissez l'intrigue, les personnages et les arcs dramatiques."
                   onAiAssist={() => handleAiAssist('developedSynopsis')}
+                  onAiAnalyze={() => handleAiAnalysis('developedSynopsis')}
                   isAiLoading={isAiLoading}
+                  isAnalysisLoading={isAnalysisLoading}
+                  suggestions={analysisSuggestions.developedSynopsis}
                 >
                   <Textarea
                     placeholder="Décrivez l'évolution de l'intrigue en détail..."
@@ -632,7 +722,10 @@ Traitement: ${project.treatment}`;
                 <SceneBoard
                   scenes={project.scenes}
                   isAiLoading={isAiLoading}
+                  isAnalysisLoading={isAnalysisLoading}
+                  suggestions={analysisSuggestions.board}
                   onAiAssist={() => handleAiAssist('board')}
+                  onAiAnalyze={() => handleAiAnalysis('board')}
                   onAddScene={addScene}
                   onEditScene={setEditingScene}
                   onRemoveScene={removeScene}
@@ -645,7 +738,10 @@ Traitement: ${project.treatment}`;
                   title="Traitement"
                   description="Narratif au présent de l'indicatif. Donnez vie aux actions, au rythme et aux nuances."
                   onAiAssist={() => handleAiAssist('treatment')}
+                  onAiAnalyze={() => handleAiAnalysis('treatment')}
                   isAiLoading={isAiLoading}
+                  isAnalysisLoading={isAnalysisLoading}
+                  suggestions={analysisSuggestions.treatment}
                 >
                   <Textarea
                     placeholder="Jean entre dans la pièce. Il sent la tension monter..."
@@ -661,7 +757,10 @@ Traitement: ${project.treatment}`;
                   title="Scénario"
                   description="Version au format de lecture: séquences, action, dialogues."
                   onAiAssist={() => handleAiAssist('screenplay')}
+                  onAiAnalyze={() => handleAiAnalysis('screenplay')}
                   isAiLoading={isAiLoading}
+                  isAnalysisLoading={isAnalysisLoading}
+                  suggestions={analysisSuggestions.screenplay}
                 >
                   <div className="mx-auto min-h-[760px] max-w-3xl rounded-sm bg-white p-6 font-mono text-[15px] leading-tight text-black shadow-2xl sm:p-12">
                     <Textarea
@@ -772,13 +871,19 @@ function StepContent({
   description,
   children,
   onAiAssist,
+  onAiAnalyze,
   isAiLoading,
+  isAnalysisLoading,
+  suggestions,
 }: {
   title: string;
   description: string;
   children: ReactNode;
   onAiAssist?: () => void;
+  onAiAnalyze?: () => void;
   isAiLoading?: boolean;
+  isAnalysisLoading?: boolean;
+  suggestions?: string;
 }) {
   return (
     <div className="space-y-6">
@@ -787,29 +892,58 @@ function StepContent({
           <h2 className="font-serif text-3xl italic text-[#222831]">{title}</h2>
           <p className="mt-1 text-sm text-[#393E46]">{description}</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full border-[#393E46] text-xs uppercase tracking-widest text-[#393E46] hover:bg-[#393E46] hover:text-[#FFFFFF] sm:w-auto"
-          onClick={onAiAssist}
-          disabled={isAiLoading}
-        >
-          <Wand2 size={14} className={cn('mr-2', isAiLoading && 'animate-spin')} />
-          {isAiLoading ? 'Génération...' : 'Assistant IA'}
-        </Button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full border-[#393E46] text-xs uppercase tracking-widest text-[#393E46] hover:bg-[#393E46] hover:text-[#FFFFFF] sm:w-auto"
+            onClick={onAiAnalyze}
+            disabled={isAnalysisLoading || isAiLoading}
+          >
+            <Lightbulb size={14} className={cn('mr-2', isAnalysisLoading && 'animate-pulse')} />
+            {isAnalysisLoading ? 'Analyse...' : 'Pistes IA'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full border-[#393E46] text-xs uppercase tracking-widest text-[#393E46] hover:bg-[#393E46] hover:text-[#FFFFFF] sm:w-auto"
+            onClick={onAiAssist}
+            disabled={isAiLoading || isAnalysisLoading}
+          >
+            <Wand2 size={14} className={cn('mr-2', isAiLoading && 'animate-spin')} />
+            {isAiLoading ? 'Génération...' : 'Assistant IA'}
+          </Button>
+        </div>
       </div>
 
       <div className="min-h-[500px] rounded-lg border border-[#393E46] bg-[#EEEEEE] p-5 shadow-2xl sm:p-10">
         {children}
       </div>
+
+      {suggestions && <SuggestionPanel text={suggestions} />}
     </div>
+  );
+}
+
+function SuggestionPanel({ text }: { text: string }) {
+  return (
+    <Card className="border-[#393E46] bg-[#FFFFFF] p-4 shadow-lg">
+      <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#393E46]">
+        <Lightbulb size={14} />
+        Pistes d'amélioration
+      </div>
+      <div className="whitespace-pre-wrap text-sm leading-relaxed text-[#222831]">{text}</div>
+    </Card>
   );
 }
 
 function SceneBoard({
   scenes,
   isAiLoading,
+  isAnalysisLoading,
+  suggestions,
   onAiAssist,
+  onAiAnalyze,
   onAddScene,
   onEditScene,
   onRemoveScene,
@@ -817,7 +951,10 @@ function SceneBoard({
 }: {
   scenes: Scene[];
   isAiLoading: boolean;
+  isAnalysisLoading: boolean;
+  suggestions?: string;
   onAiAssist: () => void;
+  onAiAnalyze: () => void;
   onAddScene: () => void;
   onEditScene: (scene: Scene) => void;
   onRemoveScene: (id: string) => void;
@@ -854,9 +991,13 @@ function SceneBoard({
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button variant="ghost" className="text-xs uppercase tracking-widest text-[#393E46] hover:text-[#222831]" onClick={onAiAssist} disabled={isAiLoading}>
+          <Button variant="ghost" className="text-xs uppercase tracking-widest text-[#393E46] hover:text-[#222831]" onClick={onAiAnalyze} disabled={isAnalysisLoading || isAiLoading}>
+            <Lightbulb size={14} className={cn('mr-2', isAnalysisLoading && 'animate-pulse')} />
+            {isAnalysisLoading ? 'Analyse...' : 'Pistes IA'}
+          </Button>
+          <Button variant="ghost" className="text-xs uppercase tracking-widest text-[#393E46] hover:text-[#222831]" onClick={onAiAssist} disabled={isAiLoading || isAnalysisLoading}>
             <Wand2 size={14} className={cn('mr-2', isAiLoading && 'animate-spin')} />
-            Suggestions IA
+            Générer
           </Button>
           <Button onClick={onAddScene} className="bg-[#FFD369] px-4 font-bold text-black hover:bg-[#FFD369]/90">
             <Plus size={16} className="mr-2" />
@@ -864,6 +1005,8 @@ function SceneBoard({
           </Button>
         </div>
       </div>
+
+      {suggestions && <SuggestionPanel text={suggestions} />}
 
       <div
         className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"

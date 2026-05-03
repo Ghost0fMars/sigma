@@ -24,6 +24,7 @@ import {
   Save,
   Trash2,
   Wand2,
+  X,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -685,121 +686,196 @@ ${getStepSnapshot(stepId)}`;
   }
 
   return (
-    <div className="min-h-screen bg-[#FFFFFF] text-[#222831] selection:bg-[#FFD369] selection:text-black">
-      <header className="sticky top-0 z-50 border-b border-[#393E46] bg-[#FFFFFF]/90 px-4 py-3 backdrop-blur-md md:px-8">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded bg-[#FFD369] text-black">
-              <Clapperboard size={20} />
-            </div>
-            <div className="min-w-0">
-              <h1 className="truncate font-serif text-xl italic tracking-wide">Sigma</h1>
-              <p className="text-[10px] font-medium uppercase tracking-widest text-[#222831]/40">
-                Assistant de dramaturgie
-              </p>
-            </div>
+    <div className="flex h-screen overflow-hidden bg-[#FFFFFF] text-[#222831] selection:bg-[#FFD369] selection:text-black">
+      {/* Sidebar – desktop */}
+      <aside className="hidden w-52 shrink-0 flex-col border-r border-[#393E46] bg-[#FFFFFF] md:flex">
+        <div className="flex items-center gap-3 border-b border-[#393E46] px-4 py-4">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded bg-[#FFD369] text-black">
+            <Clapperboard size={16} />
           </div>
-
-          <nav className="hidden items-center md:flex">
-            <button
-              onClick={() => setCurrentView('projects')}
-              className={cn(
-                'flex h-11 items-center gap-2 border-b-2 px-4 text-sm font-medium transition-colors',
-                currentView === 'projects'
-                  ? 'border-[#FFD369] bg-[#FFD369] text-[#222831]'
-                  : 'border-transparent text-[#222831]/55 hover:text-[#222831]',
-              )}
-            >
-              <FolderOpen size={14} />
-              Mes Projets
-            </button>
-            {steps.map((step, index) => {
-              const Icon = step.icon;
-              const isActive = currentStep === step.id;
-              return (
-                <button
-                  key={step.id}
-                  onClick={() => {
-                    setCurrentView('editor');
-                    setCurrentStep(step.id);
-                  }}
-                  className={cn(
-                    'flex h-11 items-center gap-2 border-b-2 px-4 text-sm font-medium transition-colors',
-                    isActive
-                      ? 'border-[#FFD369] bg-[#FFD369] text-[#222831]'
-                      : 'border-transparent text-[#222831]/55 hover:text-[#222831]',
-                  )}
-                >
-                  <span className="text-[10px] opacity-50">{index + 1}.</span>
-                  <Icon size={14} />
-                  {step.label}
-                </button>
-              );
-            })}
-          </nav>
-
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={() => setIsMobileNavOpen((value) => !value)}>
-              <Menu size={17} />
-            </Button>
-            <span className="hidden max-w-[180px] truncate text-xs text-[#393E46] lg:inline">{userEmail}</span>
-            <Button variant="outline" size="sm" className="hidden border-[#393E46] text-xs uppercase tracking-widest sm:inline-flex" onClick={saveCurrentProject}>
-              <Save size={14} className="mr-2" />
-              Sauvegarder
-            </Button>
-            <Button variant="ghost" size="sm" className="hidden text-[#222831]/45 hover:text-[#222831] sm:inline-flex" onClick={resetProject}>
-              Effacer
-            </Button>
-            <Button variant="ghost" size="icon-sm" className="text-[#393E46] hover:text-[#222831]" onClick={signOut} title="Se déconnecter">
-              <LogOut size={16} />
-            </Button>
-            <Button variant="outline" size="sm" className="border-[#393E46] text-xs uppercase tracking-widest" onClick={exportProject}>
-              <Download size={14} className="mr-2" />
-              Exporter
-            </Button>
+          <div className="min-w-0">
+            <h1 className="truncate font-serif text-lg italic tracking-wide">Sigma</h1>
+            <p className="text-[10px] font-medium uppercase tracking-widest text-[#222831]/40">
+              Assistant de dramaturgie
+            </p>
           </div>
         </div>
 
-        {isMobileNavOpen && (
-          <div className="mx-auto mt-3 grid max-w-7xl grid-cols-1 gap-2 md:hidden">
-            <button
-              onClick={() => {
-                setCurrentView('projects');
-                setIsMobileNavOpen(false);
-              }}
-              className={cn(
-                'rounded border border-[#393E46] px-3 py-2 text-left text-sm',
-                currentView === 'projects' && 'border-[#FFD369] bg-[#FFD369] text-[#222831]',
-              )}
-            >
-              Mes Projets
-            </button>
-            <Button variant="outline" className="justify-start border-[#393E46]" onClick={() => {
-              saveCurrentProject();
-              setIsMobileNavOpen(false);
-            }}>
-              <Save size={14} className="mr-2" />
-              Sauvegarder
-            </Button>
-            {steps.map((step) => (
+        <nav className="flex flex-1 flex-col gap-0.5 py-2">
+          <button
+            onClick={() => setCurrentView('projects')}
+            className={cn(
+              'flex items-center gap-2.5 px-4 py-2.5 text-left text-sm font-medium transition-colors',
+              currentView === 'projects'
+                ? 'bg-[#FFD369] text-[#222831]'
+                : 'text-[#222831]/55 hover:bg-[#EEEEEE] hover:text-[#222831]',
+            )}
+          >
+            <FolderOpen size={15} />
+            Mes Projets
+          </button>
+
+          <div className="mx-4 my-1 border-t border-[#393E46]/20" />
+
+          {steps.map((step, index) => {
+            const Icon = step.icon;
+            const isActive = currentStep === step.id && currentView === 'editor';
+            return (
               <button
                 key={step.id}
                 onClick={() => {
                   setCurrentView('editor');
                   setCurrentStep(step.id);
-                  setIsMobileNavOpen(false);
                 }}
                 className={cn(
-                  'rounded border border-[#393E46] px-3 py-2 text-left text-sm',
-                  currentStep === step.id && 'border-[#FFD369] bg-[#FFD369] text-[#222831]',
+                  'flex items-center gap-2.5 px-4 py-2.5 text-left text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-[#FFD369] text-[#222831]'
+                    : 'text-[#222831]/55 hover:bg-[#EEEEEE] hover:text-[#222831]',
                 )}
               >
+                <span className="w-4 shrink-0 text-[10px] opacity-50">{index + 1}.</span>
+                <Icon size={15} />
                 {step.label}
               </button>
-            ))}
+            );
+          })}
+        </nav>
+
+        <div className="space-y-1.5 border-t border-[#393E46] p-3">
+          <span className="block truncate px-1 text-[10px] text-[#393E46]">{userEmail}</span>
+          <Button variant="outline" size="sm" className="w-full justify-start border-[#393E46] text-xs uppercase tracking-widest" onClick={saveCurrentProject}>
+            <Save size={13} className="mr-2" />
+            Sauvegarder
+          </Button>
+          <Button variant="outline" size="sm" className="w-full justify-start border-[#393E46] text-xs uppercase tracking-widest" onClick={exportProject}>
+            <Download size={13} className="mr-2" />
+            Exporter
+          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" className="flex-1 justify-start text-xs text-[#222831]/45 hover:text-[#222831]" onClick={resetProject}>
+              Effacer
+            </Button>
+            <Button variant="ghost" size="icon-sm" className="text-[#393E46] hover:text-[#222831]" onClick={signOut} title="Se déconnecter">
+              <LogOut size={15} />
+            </Button>
           </div>
-        )}
-      </header>
+        </div>
+      </aside>
+
+      {/* Contenu principal */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* Barre mobile */}
+        <header className="flex shrink-0 items-center justify-between border-b border-[#393E46] bg-[#FFFFFF]/90 px-4 py-3 backdrop-blur-md md:hidden">
+          <div className="flex items-center gap-3">
+            <div className="flex size-8 items-center justify-center rounded bg-[#FFD369] text-black">
+              <Clapperboard size={15} />
+            </div>
+            <h1 className="font-serif text-lg italic tracking-wide">Sigma</h1>
+          </div>
+          <Button variant="ghost" size="icon-sm" onClick={() => setIsMobileNavOpen((value) => !value)}>
+            <Menu size={17} />
+          </Button>
+        </header>
+
+        <AnimatePresence>
+          {isMobileNavOpen && (
+            <>
+              <motion.div
+                className="fixed inset-0 z-40 bg-black/40 md:hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                onClick={() => setIsMobileNavOpen(false)}
+              />
+              <motion.aside
+                className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-[#393E46] bg-[#FFFFFF] md:hidden"
+                initial={{ x: -288 }}
+                animate={{ x: 0 }}
+                exit={{ x: -288 }}
+                transition={{ type: 'tween', duration: 0.22 }}
+              >
+                <div className="flex items-center justify-between border-b border-[#393E46] px-4 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded bg-[#FFD369] text-black">
+                      <Clapperboard size={16} />
+                    </div>
+                    <div>
+                      <h1 className="font-serif text-lg italic tracking-wide">Sigma</h1>
+                      <p className="text-[10px] font-medium uppercase tracking-widest text-[#222831]/40">
+                        Assistant de dramaturgie
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="icon-sm" onClick={() => setIsMobileNavOpen(false)}>
+                    <X size={17} />
+                  </Button>
+                </div>
+
+                <nav className="flex flex-1 flex-col gap-0.5 py-2">
+                  <button
+                    onClick={() => { setCurrentView('projects'); setIsMobileNavOpen(false); }}
+                    className={cn(
+                      'flex items-center gap-2.5 px-4 py-3 text-left text-sm font-medium transition-colors',
+                      currentView === 'projects'
+                        ? 'bg-[#FFD369] text-[#222831]'
+                        : 'text-[#222831]/55 hover:bg-[#EEEEEE] hover:text-[#222831]',
+                    )}
+                  >
+                    <FolderOpen size={15} />
+                    Mes Projets
+                  </button>
+
+                  <div className="mx-4 my-1 border-t border-[#393E46]/20" />
+
+                  {steps.map((step, index) => {
+                    const Icon = step.icon;
+                    const isActive = currentStep === step.id && currentView === 'editor';
+                    return (
+                      <button
+                        key={step.id}
+                        onClick={() => { setCurrentView('editor'); setCurrentStep(step.id); setIsMobileNavOpen(false); }}
+                        className={cn(
+                          'flex items-center gap-2.5 px-4 py-3 text-left text-sm font-medium transition-colors',
+                          isActive
+                            ? 'bg-[#FFD369] text-[#222831]'
+                            : 'text-[#222831]/55 hover:bg-[#EEEEEE] hover:text-[#222831]',
+                        )}
+                      >
+                        <span className="w-4 shrink-0 text-[10px] opacity-50">{index + 1}.</span>
+                        <Icon size={15} />
+                        {step.label}
+                      </button>
+                    );
+                  })}
+                </nav>
+
+                <div className="space-y-1.5 border-t border-[#393E46] p-3">
+                  <span className="block truncate px-1 text-[10px] text-[#393E46]">{userEmail}</span>
+                  <Button variant="outline" size="sm" className="w-full justify-start border-[#393E46] text-xs uppercase tracking-widest" onClick={() => { saveCurrentProject(); setIsMobileNavOpen(false); }}>
+                    <Save size={13} className="mr-2" />
+                    Sauvegarder
+                  </Button>
+                  <Button variant="outline" size="sm" className="w-full justify-start border-[#393E46] text-xs uppercase tracking-widest" onClick={() => { exportProject(); setIsMobileNavOpen(false); }}>
+                    <Download size={13} className="mr-2" />
+                    Exporter
+                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="sm" className="flex-1 justify-start text-xs text-[#222831]/45 hover:text-[#222831]" onClick={() => { resetProject(); setIsMobileNavOpen(false); }}>
+                      Effacer
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" className="text-[#393E46] hover:text-[#222831]" onClick={signOut} title="Se déconnecter">
+                      <LogOut size={15} />
+                    </Button>
+                  </div>
+                </div>
+              </motion.aside>
+            </>
+          )}
+        </AnimatePresence>
+
+        <div className="flex-1 overflow-auto">
 
       <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[280px_1fr] lg:px-6">
         <aside className="space-y-4">
@@ -972,10 +1048,12 @@ ${getStepSnapshot(stepId)}`;
         />
       )}
 
-      <footer className="mx-auto mb-6 mt-4 flex max-w-7xl items-center justify-center gap-2 px-6 text-center text-[10px] uppercase tracking-widest text-[#222831]/35">
-        <Info size={10} />
-        {statusMessage}
-      </footer>
+          <footer className="mx-auto mb-6 mt-4 flex max-w-7xl items-center justify-center gap-2 px-6 text-center text-[10px] uppercase tracking-widest text-[#222831]/35">
+            <Info size={10} />
+            {statusMessage}
+          </footer>
+        </div>
+      </div>
     </div>
   );
 }

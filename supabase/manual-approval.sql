@@ -1,50 +1,57 @@
 -- Manual approval layer for Sigma users.
 -- Run this file once in Supabase SQL Editor.
 
-create table if not exists public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
+create table if not exists public.user_access (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid unique not null references auth.users(id) on delete cascade,
   email text not null,
-  approved boolean not null default false,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
   created_at timestamptz not null default now(),
   approved_at timestamptz,
   approved_by text
 );
 
-alter table public.profiles enable row level security;
+alter table public.user_access enable row level security;
 
-drop policy if exists "Users can read their own approval status" on public.profiles;
-create policy "Users can read their own approval status"
-on public.profiles
+drop policy if exists "Users can read their own access status" on public.user_access;
+create policy "Users can read their own access status"
+on public.user_access
 for select
 to authenticated
-using (auth.uid() = id);
+using (auth.uid() = user_id);
 
-drop policy if exists "Users can create their own pending profile" on public.profiles;
-create policy "Users can create their own pending profile"
-on public.profiles
+drop policy if exists "Users can create their own pending access" on public.user_access;
+create policy "Users can create their own pending access"
+on public.user_access
 for insert
 to authenticated
-with check (auth.uid() = id and approved = false);
+with check (auth.uid() = user_id and status = 'pending');
 
--- No update policy is created for normal authenticated users.
--- Approve users from the Supabase dashboard by setting approved = true.
+-- No update policy for normal users.
+-- Approve users from the Supabase dashboard by setting status = 'approved'.
 
-create or replace function public.handle_new_user_profile()
+create or replace function public.handle_new_user_access()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, email, approved)
-  values (new.id, coalesce(new.email, ''), false)
-  on conflict (id) do nothing;
+  insert into public.user_access (user_id, email, status)
+  values (new.id, coalesce(new.email, ''), 'pending')
+  on conflict (user_id) do nothing;
 
   return new;
 end;
 $$;
 
-drop trigger if exists on_auth_user_created_create_profile on auth.users;
-create trigger on_auth_user_created_create_profile
+drop trigger if exists on_auth_user_created_create_access on auth.users;
+create trigger on_auth_user_created_create_access
 after insert on auth.users
-for each row execute function public.handle_new_user_profile();
+for each row execute function public.handle_new_user_access();
+
+-- Backfill: insert pending rows for users who registered before this table existed.
+insert into public.user_access (user_id, email, status)
+select id, coalesce(email, ''), 'pending'
+from auth.users
+on conflict (user_id) do nothing;

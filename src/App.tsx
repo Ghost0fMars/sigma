@@ -262,9 +262,9 @@ export default function App() {
       setAccessMessage('');
 
       const { data, error } = await supabase
-        .from('profiles')
-        .select('approved')
-        .eq('id', userId)
+        .from('user_access')
+        .select('status')
+        .eq('user_id', userId)
         .maybeSingle();
 
       if (isCancelled) {
@@ -273,15 +273,16 @@ export default function App() {
 
       if (error) {
         setAccessStatus('error');
-        setAccessMessage("Impossible de vérifier l'approbation du compte. Exécutez d'abord le SQL supabase/manual-approval.sql dans Supabase.");
+        setAccessMessage("Impossible de vérifier l'approbation du compte. Exécutez d'abord le SQL dans Supabase.");
         return;
       }
 
       if (!data) {
-        const { error: insertError } = await supabase.from('profiles').insert({
-          id: userId,
+        // Fallback pour les utilisateurs créés avant le trigger
+        const { error: insertError } = await supabase.from('user_access').insert({
+          user_id: userId,
           email: userEmail,
-          approved: false,
+          status: 'pending',
         });
 
         if (isCancelled) {
@@ -290,7 +291,7 @@ export default function App() {
 
         if (insertError && insertError.code !== '23505') {
           setAccessStatus('error');
-          setAccessMessage("Impossible de créer la demande d'approbation. Vérifiez les règles RLS de la table profiles.");
+          setAccessMessage("Impossible de créer la demande d'accès. Vérifiez les règles RLS de la table user_access.");
           return;
         }
 
@@ -298,7 +299,7 @@ export default function App() {
         return;
       }
 
-      setAccessStatus(data.approved ? 'approved' : 'pending');
+      setAccessStatus(data.status === 'approved' ? 'approved' : 'pending');
     };
 
     checkApproval();
@@ -317,39 +318,91 @@ export default function App() {
     const currentIdKey = getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId);
     const legacyKey = getUserStorageKey(STORAGE_KEY, userId);
 
-    let loadedProjects: SavedProject[] = [];
-    try {
-      loadedProjects = normalizeSavedProjects(JSON.parse(localStorage.getItem(projectsKey) || '[]'));
-    } catch (error) {
-      console.error('Failed to load projects', error);
-      setStatusMessage('Impossible de relire la liste des projets.');
-    }
+    const applyProjects = (loadedProjects: SavedProject[]) => {
+      const storedCurrentId = localStorage.getItem(currentIdKey);
+      const selectedProject = loadedProjects.find((item) => item.id === storedCurrentId) ?? loadedProjects[0];
 
-    const storedCurrentId = localStorage.getItem(currentIdKey);
-    const selectedProject = loadedProjects.find((item) => item.id === storedCurrentId) ?? loadedProjects[0];
-
-    if (selectedProject) {
-      setProject(selectedProject.project);
-      setCurrentProjectId(selectedProject.id);
-      setCurrentView('projects');
-    } else {
-      const legacySaved = localStorage.getItem(legacyKey);
-      if (legacySaved) {
-        try {
-          setProject(normalizeProject(JSON.parse(legacySaved)));
-        } catch (error) {
-          console.error('Failed to load legacy project', error);
+      if (selectedProject) {
+        setProject(selectedProject.project);
+        setCurrentProjectId(selectedProject.id);
+        setCurrentView('projects');
+      } else {
+        const legacySaved = localStorage.getItem(legacyKey);
+        if (legacySaved) {
+          try {
+            setProject(normalizeProject(JSON.parse(legacySaved)));
+          } catch {
+            setProject(DEFAULT_PROJECT);
+          }
+        } else {
           setProject(DEFAULT_PROJECT);
         }
-      } else {
-        setProject(DEFAULT_PROJECT);
+        setCurrentProjectId(null);
+        setCurrentView('editor');
       }
-      setCurrentProjectId(null);
-      setCurrentView('editor');
+
+      setSavedProjects(loadedProjects);
+      setIsLoaded(true);
+    };
+
+    const loadFromLocalStorage = () => {
+      let loadedProjects: SavedProject[] = [];
+      try {
+        loadedProjects = normalizeSavedProjects(JSON.parse(localStorage.getItem(projectsKey) || '[]'));
+      } catch (error) {
+        console.error('Failed to load projects from localStorage', error);
+        setStatusMessage('Impossible de relire la liste des projets.');
+      }
+      applyProjects(loadedProjects);
+    };
+
+    if (!supabase) {
+      loadFromLocalStorage();
+      return;
     }
 
-    setSavedProjects(loadedProjects);
-    setIsLoaded(true);
+    supabase
+      .from('projects')
+      .select('id, title, updated_at, data')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Failed to load projects from Supabase, falling back to localStorage', error);
+          loadFromLocalStorage();
+          return;
+        }
+
+        if (!data || data.length === 0) {
+          // Supabase vide : migrer depuis localStorage si des données existent
+          const local = normalizeSavedProjects(JSON.parse(localStorage.getItem(projectsKey) || '[]'));
+          if (local.length > 0) {
+            const rows = local.map((sp) => ({
+              id: sp.id,
+              user_id: userId,
+              title: sp.title,
+              updated_at: sp.updatedAt,
+              data: sp.project,
+            }));
+            supabase.from('projects').upsert(rows).then(({ error: upsertError }) => {
+              if (upsertError) console.error('Migration localStorage → Supabase failed', upsertError);
+            });
+          }
+          applyProjects(local);
+          return;
+        }
+
+        const loadedProjects: SavedProject[] = data.map((row) => ({
+          id: row.id,
+          title: row.title,
+          updatedAt: row.updated_at,
+          project: normalizeProject(row.data),
+        }));
+
+        // Mettre à jour le cache localStorage
+        localStorage.setItem(projectsKey, JSON.stringify(loadedProjects));
+        applyProjects(loadedProjects);
+      });
   }, [accessStatus, isAuthReady, userId]);
 
   useEffect(() => {
@@ -414,7 +467,23 @@ export default function App() {
     setCurrentProjectId(id);
     persistSavedProjects(nextProjects);
     localStorage.setItem(getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId), id);
-    setStatusMessage('Projet sauvegard?.');
+
+    if (supabase) {
+      supabase
+        .from('projects')
+        .upsert({ id, user_id: userId, title, updated_at: now, data: savedProject.project })
+        .then(({ error }) => {
+          if (error) {
+            console.error('Failed to sync project to Supabase', error);
+            setStatusMessage('Sauvegardé localement uniquement — synchronisation Supabase échouée.');
+          } else {
+            setStatusMessage('Projet sauvegardé et synchronisé.');
+          }
+        });
+      return;
+    }
+
+    setStatusMessage('Projet sauvegardé localement.');
   };
 
   const openSavedProject = (savedProject: SavedProject) => {
@@ -459,7 +528,19 @@ export default function App() {
         }
       }
     }
-    setStatusMessage('Projet supprim?.');
+
+    if (supabase && userId) {
+      supabase
+        .from('projects')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId)
+        .then(({ error }) => {
+          if (error) console.error('Failed to delete project from Supabase', error);
+        });
+    }
+
+    setStatusMessage('Projet supprimé.');
   };
 
   const handleAiAssist = async (stepId: Step) => {

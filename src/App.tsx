@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   BookOpen,
@@ -18,11 +18,14 @@ import {
   Lightbulb,
   LogOut,
   Menu,
+  MessageSquare,
   RefreshCw,
+  Send,
   ShieldCheck,
   Plus,
   Save,
   Trash2,
+  Upload,
   Wand2,
   X,
 } from 'lucide-react';
@@ -53,6 +56,12 @@ import { supabase } from './supabaseClient';
 
 type AccessStatus = 'checking' | 'pending' | 'approved' | 'error';
 type AppView = 'projects' | 'editor';
+
+type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+};
 
 type SavedProject = {
   id: string;
@@ -127,8 +136,38 @@ function createScene(order: number, overrides: Partial<Scene> = {}): Scene {
     description: '',
     dramaticInfo: '',
     type: SceneType.OTHER,
+    vt: 0,
+    ct: 0.5,
     ...overrides,
   };
+}
+
+// Calcule S(t) pour chaque scène — charge dramatique accumulée
+function computeIntegrale(scenes: Scene[]): Scene[] {
+  let accumulated = 0;
+  return scenes.map((scene, i) => {
+    const pt = i === 0 ? 1 : 1 + accumulated / ((i + 1) * 5);
+    const delta = Math.abs((scene.vt ?? 0) * pt * (scene.ct ?? 0.5));
+    accumulated += delta;
+    return { ...scene, st: parseFloat(accumulated.toFixed(2)) };
+  });
+}
+
+function vtLabel(vt: number): string {
+  if (vt <= -2) return 'Effondrement';
+  if (vt <= -1) return 'Chute';
+  if (vt < 0)   return 'Recul';
+  if (vt === 0) return 'Neutre';
+  if (vt < 1)   return 'Avancée';
+  if (vt < 2)   return 'Montée';
+  return 'Climax';
+}
+
+function ctLabel(ct: number): string {
+  if (ct <= 0.2) return 'Faible';
+  if (ct <= 0.5) return 'Modérée';
+  if (ct <= 0.8) return 'Forte';
+  return 'Maximale';
 }
 
 function countWords(text: string) {
@@ -219,6 +258,11 @@ export default function App() {
   const [analysisSuggestions, setAnalysisSuggestions] = useState<Partial<Record<Step, string>>>({});
   const [statusMessage, setStatusMessage] = useState('Sauvegarde locale prête.');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [isImportLoading, setIsImportLoading] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
   useEffect(() => {
     if (!supabase) {
@@ -509,6 +553,95 @@ export default function App() {
     setStatusMessage('Nouveau projet prêt.');
   };
 
+  const handleImportDocument = async (documentType: string, content: string) => {
+    setIsImportLoading(true);
+    setStatusMessage('Reconstruction du projet en cours...');
+    try {
+      const response = await fetch('/api/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentType, content }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Import request failed');
+      }
+
+      const raw = data.project ?? {};
+      const importedProject: Project = {
+        title: typeof raw.title === 'string' ? raw.title : 'Projet importé',
+        logline: typeof raw.logline === 'string' ? raw.logline : '',
+        synopsis: typeof raw.synopsis === 'string' ? raw.synopsis : '',
+        developedSynopsis: typeof raw.developedSynopsis === 'string' ? raw.developedSynopsis : '',
+        treatment: typeof raw.treatment === 'string' ? raw.treatment : '',
+        screenplay: typeof raw.screenplay === 'string' ? raw.screenplay : '',
+        notes: typeof raw.notes === 'string' ? raw.notes : '',
+        scenes: Array.isArray(raw.scenes)
+          ? raw.scenes.map((scene: Partial<Scene>, index: number) =>
+              createScene(index, {
+                title: scene.title || `Scène ${index + 1}`,
+                indications: scene.indications || 'INT. LIEU - JOUR',
+                description: scene.description || '',
+                dramaticInfo: scene.dramaticInfo || '',
+                type: Object.values(SceneType).includes(scene.type as SceneType)
+                  ? (scene.type as SceneType)
+                  : SceneType.OTHER,
+                vt: typeof scene.vt === 'number' ? Math.max(-2, Math.min(2, scene.vt)) : 0,
+                ct: typeof scene.ct === 'number' ? Math.max(0, Math.min(1, scene.ct)) : 0.5,
+              }),
+            )
+          : [],
+      };
+
+      setProject(importedProject);
+      setCurrentProjectId(null);
+      setCurrentStep('synopsis');
+      setCurrentView('editor');
+      setAnalysisSuggestions({});
+      setIsImportDialogOpen(false);
+      setStatusMessage(`Projet « ${importedProject.title} » reconstruit. Pensez à le sauvegarder.`);
+    } catch (error) {
+      console.error('Import error:', error);
+      setStatusMessage("L'import a échoué. Vérifiez OPENAI_API_KEY dans Vercel ou .env.local.");
+    } finally {
+      setIsImportLoading(false);
+    }
+  };
+
+  const handleSendChatMessage = async (userText: string) => {
+    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: userText };
+    const history = [...chatMessages, userMsg];
+    setChatMessages(history);
+    setIsChatLoading(true);
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: history.map(({ role, content }) => ({ role, content })),
+          project,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Chat request failed');
+      const assistantMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: typeof data.reply === 'string' ? data.reply.trim() : '',
+      };
+      setChatMessages((prev: ChatMessage[]) => [...prev, assistantMsg]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      setChatMessages((prev: ChatMessage[]) => [
+        ...prev,
+        { id: crypto.randomUUID(), role: 'assistant', content: "Une erreur s'est produite. Vérifiez votre connexion ou la clé API." },
+      ]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
   const deleteSavedProject = (id: string) => {
     const confirmed = window.confirm('Supprimer ce projet sauvegard? ?');
     if (!confirmed) {
@@ -554,11 +687,17 @@ Synopsis développé: ${project.developedSynopsis}
 Scènes: ${JSON.stringify(project.scenes)}
 Traitement: ${project.treatment}`;
 
+      const integraleSummary = project.scenes.length > 0
+        ? computeIntegrale(project.scenes)
+            .map((s, i) => `Scène ${i + 1} "${s.title}": V(t)=${s.vt ?? 0}, C(t)=${s.ct ?? 0.5}, S(t)=${s.st ?? 0}`)
+            .join('\n')
+        : 'Aucune scène encore définie.';
+
       const prompts: Record<Step, string> = {
         synopsis: `Tu es script-doctor. Améliore ce synopsis ou propose une base originale si le texte est vide. Réponds uniquement avec le synopsis, en français, en 2 à 4 paragraphes.\n\n${context}`,
         developedSynopsis: `Développe le synopsis en récit clair de 500 à 800 mots. Mets en valeur protagoniste, désir, obstacle, escalade, bascule centrale et résolution. Réponds uniquement avec le texte.\n\n${context}`,
-        board: `Propose un scène à scène de long métrage à partir du projet. Réponds uniquement en JSON valide: un tableau de 8 à 12 objets avec title, indications, description, dramaticInfo, type. Les types autorisés sont: ${Object.values(SceneType).join(', ')}.\n\n${context}`,
-        treatment: `Écris un traitement cinématographique au présent de l'indicatif à partir du scène à scène. Ton: précis, visuel, narratif. Réponds uniquement avec le traitement.\n\n${context}`,
+        board: `Propose un scène à scène de long métrage à partir du projet. Utilise l'intégrale dramatique S(t) = ∫ [V(t) · P(t|τ)] · C(t) dt pour structurer la charge narrative : V(t) est la valeur de l'acte (de -2 à +2), C(t) est la pression contextuelle (de 0 à 1). Assure-toi que S(t) monte progressivement, avec des variations dramatiques. Réponds uniquement en JSON valide: un tableau de 8 à 12 objets avec title, indications, description, dramaticInfo, type, vt (number -2 à 2), ct (number 0 à 1). Les types autorisés sont: ${Object.values(SceneType).join(', ')}.\n\n${context}`,
+        treatment: `Écris un traitement cinématographique au présent de l'indicatif à partir du scène à scène. Ton: précis, visuel, narratif. Tiens compte de la dynamique de l'intégrale dramatique:\n${integraleSummary}\nRéponds uniquement avec le traitement.\n\n${context}`,
         screenplay: `Transforme le traitement en extrait de scénario professionnel français: intitulés INT./EXT., action au présent, dialogues lisibles. Réponds uniquement avec le scénario.\n\n${context}`,
       };
 
@@ -645,6 +784,12 @@ Information dramatique: ${scene.dramaticInfo || 'Non renseignée'}`,
         screenplay: 'Scénario',
       };
 
+      const integraleAnalysis = project.scenes.length > 0
+        ? `\nIntégrale dramatique S(t):\n` + computeIntegrale(project.scenes)
+            .map((s, i) => `  Scène ${i + 1} "${s.title}": V(t)=${s.vt ?? 0} (${vtLabel(s.vt ?? 0)}), C(t)=${s.ct ?? 0.5} (${ctLabel(s.ct ?? 0.5)}), S(t)=${s.st ?? 0}`)
+            .join('\n')
+        : '';
+
       const prompt = `Tu es script-doctor et consultant en dramaturgie. Analyse uniquement la page "${stepLabels[stepId]}" de ce projet Sigma.
 
 Objectif: proposer des pistes d'amélioration concrètes sans réécrire le texte à la place de l'auteur.
@@ -652,12 +797,13 @@ Objectif: proposer des pistes d'amélioration concrètes sans réécrire le text
 Réponds en français avec:
 - un diagnostic bref;
 - 5 à 8 pistes d'amélioration actionnables;
-- 2 questions utiles à poser à l'auteur.
+- 2 questions utiles à poser à l'auteur.${stepId === 'board' ? '\n- une analyse de la dynamique S(t): la courbe monte-t-elle suffisamment ? Y a-t-il des plateaux trop longs ou des chutes trop brusques ?' : ''}
 
 Projet:
 Titre: ${project.title}
 Logline: ${project.logline || 'Non renseignée'}
 Notes: ${project.notes || 'Non renseignées'}
+${integraleAnalysis}
 
 Contenu de la page à analyser:
 ${getStepSnapshot(stepId)}`;
@@ -825,6 +971,18 @@ ${getStepSnapshot(stepId)}`;
 
         <div className="space-y-1.5 border-t border-[#393E46] p-3">
           <span className="block truncate px-1 text-[10px] text-[#393E46]">{userEmail}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(
+              'w-full justify-start border-[#393E46] text-xs uppercase tracking-widest',
+              isChatOpen && 'border-[#FFD369] bg-[#FFD369] text-black hover:bg-[#FFD369]/90',
+            )}
+            onClick={() => setIsChatOpen((v: boolean) => !v)}
+          >
+            <MessageSquare size={13} className="mr-2" />
+            Script Doctor
+          </Button>
           <Button variant="outline" size="sm" className="w-full justify-start border-[#393E46] text-xs uppercase tracking-widest" onClick={saveCurrentProject}>
             <Save size={13} className="mr-2" />
             Sauvegarder
@@ -934,6 +1092,18 @@ ${getStepSnapshot(stepId)}`;
 
                 <div className="space-y-1.5 border-t border-[#393E46] p-3">
                   <span className="block truncate px-1 text-[10px] text-[#393E46]">{userEmail}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      'w-full justify-start border-[#393E46] text-xs uppercase tracking-widest',
+                      isChatOpen && 'border-[#FFD369] bg-[#FFD369] text-black hover:bg-[#FFD369]/90',
+                    )}
+                    onClick={() => { setIsChatOpen((v: boolean) => !v); setIsMobileNavOpen(false); }}
+                  >
+                    <MessageSquare size={13} className="mr-2" />
+                    Script Doctor
+                  </Button>
                   <Button variant="outline" size="sm" className="w-full justify-start border-[#393E46] text-xs uppercase tracking-widest" onClick={() => { saveCurrentProject(); setIsMobileNavOpen(false); }}>
                     <Save size={13} className="mr-2" />
                     Sauvegarder
@@ -1012,6 +1182,7 @@ ${getStepSnapshot(stepId)}`;
               onCreateProject={createNewProject}
               onOpenProject={openSavedProject}
               onDeleteProject={deleteSavedProject}
+              onImportDocument={() => setIsImportDialogOpen(true)}
             />
           ) : (
           <AnimatePresence mode="wait">
@@ -1129,6 +1300,22 @@ ${getStepSnapshot(stepId)}`;
         />
       )}
 
+      <ImportDocumentDialog
+        open={isImportDialogOpen}
+        isLoading={isImportLoading}
+        onClose={() => setIsImportDialogOpen(false)}
+        onImport={handleImportDocument}
+      />
+
+      <ChatPanel
+        open={isChatOpen}
+        messages={chatMessages}
+        isLoading={isChatLoading}
+        onClose={() => setIsChatOpen(false)}
+        onSend={handleSendChatMessage}
+        onClear={() => setChatMessages([])}
+      />
+
           <footer className="mx-auto mb-6 mt-4 flex max-w-7xl items-center justify-center gap-2 px-6 text-center text-[10px] uppercase tracking-widest text-[#222831]/35">
             <Info size={10} />
             {statusMessage}
@@ -1145,12 +1332,14 @@ function ProjectsPage({
   onCreateProject,
   onOpenProject,
   onDeleteProject,
+  onImportDocument,
 }: {
   projects: SavedProject[];
   currentProjectId: string | null;
   onCreateProject: () => void;
   onOpenProject: (project: SavedProject) => void;
   onDeleteProject: (id: string) => void;
+  onImportDocument: () => void;
 }) {
   return (
     <div className="space-y-6">
@@ -1159,10 +1348,16 @@ function ProjectsPage({
           <h2 className="font-serif text-3xl italic text-[#222831]">Mes Projets</h2>
           <p className="mt-1 text-sm text-[#393E46]">Retrouvez vos scénarios sauvegardés sur cet appareil.</p>
         </div>
-        <Button onClick={onCreateProject} className="bg-[#FFD369] px-4 font-bold text-black hover:bg-[#FFD369]/90">
-          <Plus size={16} className="mr-2" />
-          Nouveau projet
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={onImportDocument} className="border-[#393E46] px-4 font-bold text-[#222831] hover:bg-[#EEEEEE]">
+            <Upload size={16} className="mr-2" />
+            Importer
+          </Button>
+          <Button onClick={onCreateProject} className="bg-[#FFD369] px-4 font-bold text-black hover:bg-[#FFD369]/90">
+            <Plus size={16} className="mr-2" />
+            Nouveau projet
+          </Button>
+        </div>
       </div>
 
       {projects.length === 0 ? (
@@ -1401,6 +1596,9 @@ function SceneBoard({
     onReorderScenes(nextScenes);
   };
 
+  const scenesWithSt = computeIntegrale(scenes);
+  const maxSt = Math.max(...scenesWithSt.map(s => s.st ?? 0), 1);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 rounded-lg border border-[#393E46] bg-[#EEEEEE] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1427,6 +1625,51 @@ function SceneBoard({
         </div>
       </div>
 
+      {/* Courbe S(t) — Intégrale dramatique */}
+      {scenes.length > 1 && (
+        <div className="rounded-lg border border-[#393E46] bg-[#EEEEEE] p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[#393E46]">Intégrale dramatique S(t)</span>
+            <span className="text-[10px] text-[#393E46]/60">— charge narrative accumulée</span>
+          </div>
+          <div className="relative h-20 w-full">
+            <svg viewBox={`0 0 ${scenes.length * 60} 80`} className="h-full w-full" preserveAspectRatio="none">
+              {/* Ligne de base */}
+              <line x1="0" y1="70" x2={scenes.length * 60} y2="70" stroke="#393E46" strokeWidth="0.5" strokeOpacity="0.3" />
+              {/* Courbe S(t) */}
+              <polyline
+                fill="none"
+                stroke="#FFD369"
+                strokeWidth="2"
+                strokeLinejoin="round"
+                points={scenesWithSt.map((s, i) => {
+                  const x = i * 60 + 30;
+                  const y = 70 - ((s.st ?? 0) / maxSt) * 60;
+                  return `${x},${y}`;
+                }).join(' ')}
+              />
+              {/* Points */}
+              {scenesWithSt.map((s, i) => {
+                const x = i * 60 + 30;
+                const y = 70 - ((s.st ?? 0) / maxSt) * 60;
+                return (
+                  <g key={s.id}>
+                    <circle cx={x} cy={y} r="3" fill="#FFD369" stroke="#393E46" strokeWidth="1" />
+                    <text x={x} y={76} textAnchor="middle" fontSize="6" fill="#393E46" opacity="0.6">
+                      {i + 1}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+          <div className="mt-1 flex justify-between text-[9px] text-[#393E46]/50">
+            <span>S(t) = 0</span>
+            <span>S(t) max = {maxSt.toFixed(1)}</span>
+          </div>
+        </div>
+      )}
+
       {suggestions && <SuggestionPanel text={suggestions} />}
 
       <div
@@ -1437,7 +1680,7 @@ function SceneBoard({
           setDragOverSceneId(null);
         }}
       >
-        {scenes.map((scene) => (
+        {scenesWithSt.map((scene) => (
           <div
             key={scene.id}
             draggable
@@ -1490,17 +1733,32 @@ function SceneBoard({
                 </p>
               </div>
 
-              <div className="mt-auto flex items-center justify-between gap-3 border-t border-[#393E46]/10 pt-3">
+              <div className="mt-auto flex flex-col gap-2 border-t border-[#393E46]/10 pt-3">
                 <span className="truncate font-serif text-[11px] italic text-[#222831]/40">
                   {scene.dramaticInfo || 'Information dramatique à définir'}
                 </span>
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon-xs" className="text-[#393E46] hover:text-[#222831]" onClick={() => onEditScene(scene)}>
-                    <Edit3 size={12} />
-                  </Button>
-                  <Button variant="ghost" size="icon-xs" className="text-[#393E46] hover:text-red-400" onClick={() => onRemoveScene(scene.id)}>
-                    <Trash2 size={12} />
-                  </Button>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap gap-1">
+                    <span className="rounded bg-[#393E46]/10 px-1.5 py-0.5 font-mono text-[9px] text-[#393E46]">
+                      V(t) {scene.vt >= 0 ? '+' : ''}{scene.vt ?? 0} {vtLabel(scene.vt ?? 0)}
+                    </span>
+                    <span className="rounded bg-[#393E46]/10 px-1.5 py-0.5 font-mono text-[9px] text-[#393E46]">
+                      C(t) {((scene.ct ?? 0.5) * 100).toFixed(0)}% {ctLabel(scene.ct ?? 0.5)}
+                    </span>
+                    {scene.st !== undefined && (
+                      <span className="rounded bg-[#FFD369]/60 px-1.5 py-0.5 font-mono text-[9px] font-bold text-[#222831]">
+                        S(t) {scene.st}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon-xs" className="text-[#393E46] hover:text-[#222831]" onClick={() => onEditScene(scene)}>
+                      <Edit3 size={12} />
+                    </Button>
+                    <Button variant="ghost" size="icon-xs" className="text-[#393E46] hover:text-red-400" onClick={() => onRemoveScene(scene.id)}>
+                      <Trash2 size={12} />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </Card>
@@ -1572,6 +1830,46 @@ function SceneDialog({
           <Field label="Information dramatique clé">
             <Textarea value={scene.dramaticInfo} onChange={(event) => onChange({ ...scene, dramaticInfo: event.target.value })} className="h-24 resize-none rounded border-[#393E46] bg-[#FFFFFF] p-3 font-serif text-sm italic leading-relaxed text-[#393E46]" placeholder="Révélation, décision, retournement, dette dramatique..." />
           </Field>
+
+          <div className="grid gap-4 rounded border border-[#393E46]/30 bg-[#FFFFFF] p-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <span className="block text-[10px] font-bold uppercase tracking-widest text-[#393E46]">
+                V(t) — Valeur de l'acte : {scene.vt >= 0 ? '+' : ''}{scene.vt ?? 0} ({vtLabel(scene.vt ?? 0)})
+              </span>
+              <p className="text-[10px] text-[#393E46]/60">De −2 (effondrement) à +2 (climax)</p>
+              <input
+                type="range"
+                min="-2"
+                max="2"
+                step="0.5"
+                value={scene.vt ?? 0}
+                onChange={(e) => onChange({ ...scene, vt: parseFloat(e.target.value) })}
+                className="w-full accent-[#FFD369]"
+              />
+              <div className="flex justify-between font-mono text-[9px] text-[#393E46]/50">
+                <span>−2</span><span>0</span><span>+2</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <span className="block text-[10px] font-bold uppercase tracking-widest text-[#393E46]">
+                C(t) — Pression contextuelle : {((scene.ct ?? 0.5) * 100).toFixed(0)}% ({ctLabel(scene.ct ?? 0.5)})
+              </span>
+              <p className="text-[10px] text-[#393E46]/60">De 0 (nulle) à 1 (maximale)</p>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                value={scene.ct ?? 0.5}
+                onChange={(e) => onChange({ ...scene, ct: parseFloat(e.target.value) })}
+                className="w-full accent-[#FFD369]"
+              />
+              <div className="flex justify-between font-mono text-[9px] text-[#393E46]/50">
+                <span>Faible</span><span>Modérée</span><span>Maximale</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <DialogFooter className="flex items-center justify-between border-t border-[#393E46] bg-[#EEEEEE] p-6">
@@ -1600,8 +1898,318 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+const DOCUMENT_TYPES = [
+  { value: 'idee', label: 'Idée / Note libre', description: 'Une idée brute, quelques lignes de concept.' },
+  { value: 'note_intention', label: "Note d'intention", description: 'Vision artistique et direction du projet.' },
+  { value: 'synopsis', label: 'Synopsis', description: "Résumé court de l'histoire (1-4 paragraphes)." },
+  { value: 'traitement', label: 'Traitement', description: 'Récit au présent décrivant les séquences.' },
+  { value: 'scenario', label: 'Scénario', description: 'Format professionnel INT./EXT. avec dialogues.' },
+] as const;
 
+function ImportDocumentDialog({
+  open,
+  isLoading,
+  onClose,
+  onImport,
+}: {
+  open: boolean;
+  isLoading: boolean;
+  onClose: () => void;
+  onImport: (documentType: string, content: string) => Promise<void>;
+}) {
+  const [documentType, setDocumentType] = useState<string>('idee');
+  const [content, setContent] = useState('');
 
+  const selectedType = DOCUMENT_TYPES.find((t) => t.value === documentType);
 
+  const handleFileUpload = (e: { target: HTMLInputElement }) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setContent(typeof event.target?.result === 'string' ? event.target.result : '');
+    };
+    reader.readAsText(file, 'utf-8');
+    e.target.value = '';
+  };
+
+  const handleSubmit = () => {
+    if (!content.trim()) return;
+    onImport(documentType, content.trim());
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen && !isLoading) onClose(); }}>
+      <DialogContent className="max-w-2xl border-[#393E46] bg-[#EEEEEE] p-0 text-[#222831]">
+        <DialogHeader className="border-b border-[#393E46] px-6 py-5">
+          <DialogTitle className="flex items-center gap-3 font-serif text-2xl italic">
+            <div className="flex size-9 items-center justify-center rounded bg-[#FFD369] text-black">
+              <Upload size={16} />
+            </div>
+            Importer un document
+          </DialogTitle>
+          <p className="mt-1 text-sm text-[#393E46]">
+            L'IA analyse votre document et reconstruit un projet complet : scène à scène, synopsis, traitement et scénario.
+          </p>
+        </DialogHeader>
+
+        <div className="space-y-5 px-6 py-5">
+          <Field label="Type de document">
+            <Select value={documentType} onValueChange={setDocumentType} disabled={isLoading}>
+              <SelectTrigger className="h-10 rounded border-[#393E46] bg-[#FFFFFF] text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="border-[#393E46] bg-[#EEEEEE] text-[#222831]">
+                {DOCUMENT_TYPES.map((type) => (
+                  <SelectItem key={type.value} value={type.value} className="text-sm focus:bg-[#FFD369]/20">
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedType && (
+              <p className="mt-1.5 text-[11px] text-[#393E46]/70">{selectedType.description}</p>
+            )}
+          </Field>
+
+          <Field label="Contenu du document">
+            <Textarea
+              placeholder="Collez ici votre texte, ou utilisez le bouton ci-dessous pour charger un fichier .txt ou .fountain..."
+              className="h-56 resize-none rounded border-[#393E46] bg-[#FFFFFF] p-3 font-serif text-sm leading-relaxed text-[#393E46] focus-visible:ring-[#FFD369]"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              disabled={isLoading}
+            />
+          </Field>
+
+          <div className="flex items-center gap-3">
+            <label className={cn('cursor-pointer', isLoading && 'pointer-events-none opacity-50')}>
+              <input
+                type="file"
+                accept=".txt,.fountain,.md,.fdx"
+                className="sr-only"
+                onChange={handleFileUpload}
+                disabled={isLoading}
+              />
+              <span className="inline-flex items-center gap-2 rounded border border-[#393E46] bg-[#FFFFFF] px-3 py-1.5 text-xs font-medium text-[#222831] hover:bg-[#EEEEEE]">
+                <FileText size={13} />
+                Charger un fichier
+              </span>
+            </label>
+            {content.trim() && (
+              <span className="text-[11px] text-[#393E46]/60">
+                {content.trim().split(/\s+/).filter(Boolean).length} mots
+              </span>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter className="flex items-center justify-between border-t border-[#393E46] bg-[#EEEEEE] px-6 py-4">
+          <Button
+            variant="ghost"
+            className="text-xs text-[#393E46] hover:text-[#222831]"
+            onClick={onClose}
+            disabled={isLoading}
+          >
+            Annuler
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!content.trim() || isLoading}
+            className="bg-[#FFD369] px-6 font-bold text-black hover:bg-[#FFD369]/90 disabled:opacity-50"
+          >
+            {isLoading ? (
+              <>
+                <RefreshCw size={14} className="mr-2 animate-spin" />
+                Reconstruction en cours…
+              </>
+            ) : (
+              <>
+                <Wand2 size={14} className="mr-2" />
+                Analyser et reconstruire
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ChatPanel({
+  open,
+  messages,
+  isLoading,
+  onClose,
+  onSend,
+  onClear,
+}: {
+  open: boolean;
+  messages: ChatMessage[];
+  isLoading: boolean;
+  onClose: () => void;
+  onSend: (text: string) => void;
+  onClear: () => void;
+}) {
+  const [input, setInput] = useState('');
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isLoading]);
+
+  const handleSubmit = () => {
+    const text = input.trim();
+    if (!text || isLoading) return;
+    setInput('');
+    onSend(text);
+  };
+
+  const handleKeyDown = (e: { key: string; shiftKey: boolean; preventDefault: () => void }) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            className="fixed inset-0 z-40 bg-black/20 md:hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={onClose}
+          />
+          <motion.aside
+            className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-[#393E46] bg-[#FFFFFF] shadow-2xl sm:w-[420px]"
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'tween', duration: 0.24 }}
+          >
+            {/* Header */}
+            <div className="flex shrink-0 items-center justify-between border-b border-[#393E46] px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-8 items-center justify-center rounded bg-[#FFD369] text-black">
+                  <MessageSquare size={15} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-[#222831]">Script Doctor IA</p>
+                  <p className="text-[10px] uppercase tracking-widest text-[#393E46]/60">Connecté à votre projet</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                {messages.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-[10px] uppercase tracking-widest text-[#393E46]/50 hover:text-[#222831]"
+                    onClick={onClear}
+                  >
+                    Effacer
+                  </Button>
+                )}
+                <Button variant="ghost" size="icon-sm" onClick={onClose} className="text-[#393E46] hover:text-[#222831]">
+                  <X size={16} />
+                </Button>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+              {messages.length === 0 && !isLoading && (
+                <div className="flex h-full flex-col items-center justify-center text-center">
+                  <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-[#FFD369]/20">
+                    <MessageSquare size={26} className="text-[#FFD369]" />
+                  </div>
+                  <p className="font-serif text-lg italic text-[#222831]">Votre script doctor</p>
+                  <p className="mt-2 max-w-xs text-sm leading-relaxed text-[#393E46]/70">
+                    Posez une question sur votre projet, demandez une analyse dramaturgique, ou explorez des pistes de réécriture.
+                  </p>
+                  <div className="mt-5 flex flex-col gap-2 w-full max-w-xs">
+                    {[
+                      'Quels sont les points faibles de ma structure ?',
+                      'Analyse la courbe dramatique de mes scènes.',
+                      "Comment renforcer l'arc de mon protagoniste ?",
+                    ].map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        onClick={() => onSend(suggestion)}
+                        className="rounded border border-[#393E46]/30 bg-[#EEEEEE] px-3 py-2 text-left text-xs text-[#393E46] hover:border-[#FFD369] hover:bg-[#FFD369]/10 transition-colors"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={cn('flex flex-col gap-1', msg.role === 'user' ? 'items-end' : 'items-start')}
+                >
+                  <span className="text-[10px] uppercase tracking-widest text-[#393E46]/50">
+                    {msg.role === 'user' ? 'Vous' : 'Script Doctor'}
+                  </span>
+                  <div
+                    className={cn(
+                      'max-w-[85%] rounded px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap',
+                      msg.role === 'user'
+                        ? 'bg-[#222831] text-white'
+                        : 'border border-[#393E46]/20 bg-[#EEEEEE] text-[#222831]',
+                    )}
+                  >
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+
+              {isLoading && (
+                <div className="flex flex-col items-start gap-1">
+                  <span className="text-[10px] uppercase tracking-widest text-[#393E46]/50">Script Doctor</span>
+                  <div className="flex items-center gap-1.5 rounded border border-[#393E46]/20 bg-[#EEEEEE] px-4 py-3">
+                    <span className="size-1.5 rounded-full bg-[#393E46]/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="size-1.5 rounded-full bg-[#393E46]/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="size-1.5 rounded-full bg-[#393E46]/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              )}
+
+              <div ref={bottomRef} />
+            </div>
+
+            {/* Input */}
+            <div className="shrink-0 border-t border-[#393E46] bg-[#FFFFFF] p-3">
+              <div className="flex items-end gap-2">
+                <Textarea
+                  placeholder="Posez votre question…"
+                  className="min-h-[44px] max-h-36 resize-none rounded border-[#393E46] bg-[#EEEEEE] px-3 py-2.5 text-sm leading-snug shadow-none focus-visible:ring-[#FFD369]"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={isLoading}
+                  rows={1}
+                />
+                <Button
+                  onClick={handleSubmit}
+                  disabled={!input.trim() || isLoading}
+                  className="shrink-0 size-10 rounded bg-[#FFD369] p-0 text-black hover:bg-[#FFD369]/90 disabled:opacity-40"
+                >
+                  <Send size={15} />
+                </Button>
+              </div>
+              <p className="mt-1.5 text-[10px] text-[#393E46]/40">Entrée pour envoyer · Maj+Entrée pour nouvelle ligne</p>
+            </div>
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
 
 

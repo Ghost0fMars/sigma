@@ -24,6 +24,10 @@ export interface Scene {
   description: string;
   dramaticInfo: string;
   type: SceneType;
+  // Intégrale dramatique S(t) = ∫ [V(t) · P(t|τ)] · C(t) dt
+  vt: number;   // Valeur de l'acte : -2 (très négatif) à +2 (très positif)
+  ct: number;   // Pression contextuelle : 0 (nulle) à 1 (maximale)
+  st?: number;  // Charge dramatique accumulée (calculée automatiquement)
 }
 
 export interface Project {

@@ -276,6 +276,9 @@ export default function App() {
       setUserEmail(user?.email ?? '');
       setAccessStatus(user ? 'checking' : 'pending');
       setIsAuthReady(true);
+    }).catch(() => {
+      setAccessStatus('pending');
+      setIsAuthReady(true);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -885,7 +888,12 @@ ${getStepSnapshot(stepId)}`;
   };
 
   if (!isAuthReady) {
-    return null;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0a0a0a' }}>
+        <div style={{ width: 32, height: 32, border: '3px solid #333', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
   }
 
   if (!userId) {

@@ -643,9 +643,10 @@ export default function App() {
       setChatMessages((prev: ChatMessage[]) => [...prev, assistantMsg]);
     } catch (error) {
       console.error('Chat error:', error);
+      const msg = error instanceof Error ? error.message : "Une erreur s'est produite. Vérifiez votre connexion ou la clé API.";
       setChatMessages((prev: ChatMessage[]) => [
         ...prev,
-        { id: crypto.randomUUID(), role: 'assistant', content: "Une erreur s'est produite. Vérifiez votre connexion ou la clé API." },
+        { id: crypto.randomUUID(), role: 'assistant', content: `⚠️ ${msg}` },
       ]);
     } finally {
       setIsChatLoading(false);

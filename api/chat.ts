@@ -84,7 +84,7 @@ export default async function handler(req: any, res: any) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: process.env.OPENAI_MODEL || 'gpt-4o',
         messages: [systemMessage, ...sanitizedMessages],
         max_tokens: 1200,
         temperature: 0.7,

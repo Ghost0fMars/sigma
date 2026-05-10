@@ -86,7 +86,7 @@ export default async function handler(req: any, res: any) {
       body: JSON.stringify({
         model: process.env.OPENAI_MODEL || 'gpt-4o',
         messages: [systemMessage, ...sanitizedMessages],
-        max_tokens: 1200,
+        max_completion_tokens: 1200,
         temperature: 0.7,
       }),
     });

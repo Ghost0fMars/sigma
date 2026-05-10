@@ -1,4 +1,6 @@
 
+import { DRAMATURGICAL_REFERENCES, SCENE_TYPES_LIST } from './dramaturgical-system';
+
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 
 function extractOutputText(response: any): string {
@@ -51,8 +53,7 @@ const TYPE_INSTRUCTIONS: Record<string, string> = {
 - Le champ screenplay peut être vide`,
 };
 
-const SCENE_TYPES =
-  'Exposition, Incident Déclencheur, Noeud Dramatique 1, Point de Pression 1, Milieu, Point de Pression 2, Noeud Dramatique 2, Climax, Résolution, Autre';
+const SCENE_TYPES = SCENE_TYPES_LIST;
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -75,17 +76,21 @@ export default async function handler(req: any, res: any) {
 
   const prompt = `Tu es script-doctor expert en dramaturgie. Un auteur t'envoie ${typeLabel}. Analyse-le et reconstruis un projet Sigma complet.
 
+${DRAMATURGICAL_REFERENCES}
+
 Instructions spécifiques pour ce type de document :
 ${instruction}
 
 Règles générales :
 - Extrais ou invente un titre pertinent${titleHint}
+- Identifie d'abord le mythos dominant (Frye) pour calibrer la dynamique S(t)
 - Génère entre 8 et 14 scènes structurées selon la courbe dramatique S(t) = ∫ [V(t)·P(t|τ)]·C(t) dt
 - V(t) : valeur de l'acte de -2 (effondrement total) à +2 (climax positif)
 - C(t) : pression contextuelle de 0 (nulle) à 1 (maximale)
 - La courbe S(t) doit progresser de façon cohérente avec des tensions et détentes dramatiques
 - Utilise uniquement ces types de scènes : ${SCENE_TYPES}
 - Rédige TOUT en français
+- Dans le champ "notes", identifie le mythos Frye, la faiblesse/besoin Truby, et l'étape Campbell dominante
 
 Réponds UNIQUEMENT en JSON valide, sans aucun commentaire ni balise markdown :
 {
@@ -106,7 +111,7 @@ Réponds UNIQUEMENT en JSON valide, sans aucun commentaire ni balise markdown :
   ],
   "treatment": "string (traitement cinématographique au présent de l'indicatif)",
   "screenplay": "string (scénario professionnel ou chaîne vide selon le type)",
-  "notes": "string (observations dramaturgiques issues de l'analyse du document importé)"
+  "notes": "string (analyse dramaturgique : mythos Frye, faiblesse/besoin Truby, étape Campbell, observations sur S(t))"
 }
 
 Document à analyser :

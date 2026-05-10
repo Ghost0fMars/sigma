@@ -1,4 +1,6 @@
 
+import { DRAMATURGICAL_REFERENCES } from './dramaturgical-system';
+
 const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions';
 
 const SYSTEM_PROMPT = `Tu es un script-doctor expert en dramaturgie cinématographique et consultant créatif. Tu travailles directement avec l'auteur sur son projet en cours.
@@ -7,13 +9,15 @@ Ton rôle :
 - Analyser les forces et faiblesses dramaturgiques du projet
 - Identifier les problèmes de structure, de rythme, de cohérence des personnages
 - Proposer des pistes de réécriture concrètes et actionnables
-- Expliquer les principes narratifs (trois actes, voyage du héros, intégrale dramatique S(t))
-- Répondre à toutes les questions de l'auteur sur son projet
+- Expliquer les principes narratifs en te référant explicitement aux théories ci-dessous
 - Utiliser les notions de l'intégrale dramatique : V(t) valeur de l'acte, C(t) pression contextuelle, S(t) charge dramatique accumulée
+- Quand tu identifies un problème, cite le cadre théorique pertinent (ex: "selon McKee, cette scène manque de bascule de valeur dramatique...")
 
 Style : direct, bienveillant, professionnel. Sois précis et concret. Évite les généralités. Réponds toujours en français.
 
-Si l'auteur parle d'une scène spécifique, réfère-toi à son titre et son numéro. Si tu pointes un problème, propose toujours au moins une piste de résolution.`;
+Si l'auteur parle d'une scène spécifique, réfère-toi à son titre et son numéro. Si tu pointes un problème, propose toujours au moins une piste de résolution.
+
+${DRAMATURGICAL_REFERENCES}`;
 
 function buildProjectContext(project: any): string {
   if (!project || typeof project !== 'object') return 'Aucun projet chargé.';

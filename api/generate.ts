@@ -1,4 +1,6 @@
 
+import { DRAMATURGICAL_REFERENCES } from './dramaturgical-system';
+
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 
 function extractOutputText(response: any): string {
@@ -33,6 +35,8 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'Missing prompt' });
   }
 
+  const enrichedPrompt = `${DRAMATURGICAL_REFERENCES}\n\n${prompt}`;
+
   const openaiResponse = await fetch(OPENAI_RESPONSES_URL, {
     method: 'POST',
     headers: {
@@ -41,7 +45,7 @@ export default async function handler(req: any, res: any) {
     },
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL || 'gpt-5',
-      input: prompt,
+      input: enrichedPrompt,
     }),
   });
 

@@ -1,5 +1,5 @@
 
-import { DRAMATURGICAL_REFERENCES } from './_dramaturgical-system';
+import { DRAMATURGICAL_REFERENCES } from './_dramaturgical-system.js';
 
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 

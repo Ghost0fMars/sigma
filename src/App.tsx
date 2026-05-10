@@ -281,17 +281,24 @@ export default function App() {
       setIsAuthReady(true);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      // Ignore token refreshes — they don't change the user, no need to reset state
+      if (event === 'TOKEN_REFRESHED') return;
+
       const user = session?.user ?? null;
-      setUserId(user?.id ?? null);
-      setUserEmail(user?.email ?? '');
-      setAccessStatus(user ? 'checking' : 'pending');
-      setAccessMessage('');
-      setProject(DEFAULT_PROJECT);
-      setSavedProjects([]);
-      setCurrentProjectId(null);
-      setCurrentView('editor');
-      setIsLoaded(false);
+      setUserId((prevId: string | null) => {
+        // If same user, only sync email but don't reset the whole app
+        if (prevId === (user?.id ?? null)) return prevId;
+        setUserEmail(user?.email ?? '');
+        setAccessStatus(user ? 'checking' : 'pending');
+        setAccessMessage('');
+        setProject(DEFAULT_PROJECT);
+        setSavedProjects([]);
+        setCurrentProjectId(null);
+        setCurrentView('editor');
+        setIsLoaded(false);
+        return user?.id ?? null;
+      });
     });
 
     return () => listener.subscription.unsubscribe();

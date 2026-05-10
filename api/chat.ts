@@ -74,21 +74,27 @@ export default async function handler(req: any, res: any) {
     .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
     .map((m: any) => ({ role: m.role, content: m.content }));
 
-  const openaiResponse = await fetch(OPENAI_CHAT_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || 'gpt-4o',
-      messages: [systemMessage, ...sanitizedMessages],
-      max_tokens: 1200,
-      temperature: 0.7,
-    }),
-  });
+  let openaiResponse: Response;
+  let data: any;
+  try {
+    openaiResponse = await fetch(OPENAI_CHAT_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [systemMessage, ...sanitizedMessages],
+        max_tokens: 1200,
+        temperature: 0.7,
+      }),
+    });
+    data = await openaiResponse.json();
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to reach OpenAI' });
+  }
 
-  const data = await openaiResponse.json();
   if (!openaiResponse.ok) {
     return res.status(openaiResponse.status).json({
       error: data.error?.message || 'OpenAI request failed',

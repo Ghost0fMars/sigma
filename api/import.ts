@@ -1,5 +1,5 @@
 
-import { DRAMATURGICAL_REFERENCES, SCENE_TYPES_LIST } from './dramaturgical-system';
+import { DRAMATURGICAL_REFERENCES, SCENE_TYPES_LIST } from '../lib/dramaturgical-system';
 
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 

@@ -633,8 +633,9 @@ export default function App() {
           project,
         }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Chat request failed');
+      let data: any;
+      try { data = await response.json(); } catch { throw new Error(`Erreur serveur HTTP ${response.status}`); }
+      if (!response.ok) throw new Error(data.error || `Erreur HTTP ${response.status}`);
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',

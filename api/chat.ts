@@ -1,5 +1,5 @@
 
-import { DRAMATURGICAL_REFERENCES } from '../lib/dramaturgical-system';
+import { DRAMATURGICAL_REFERENCES } from './_dramaturgical-system';
 
 const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions';
 

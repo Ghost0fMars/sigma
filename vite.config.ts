@@ -20,5 +20,30 @@ export default defineConfig(() => {
         '/api': 'http://localhost:3002',
       },
     },
+    build: {
+      // Augmente la limite pour faire taire le warning (668 kB gzippé → 197 kB, acceptable)
+      chunkSizeWarningLimit: 700,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            // React core — rarement mis à jour, sera mis en cache longtemps
+            'vendor-react': ['react', 'react-dom'],
+            // Framer Motion — lib d'animation lourde (~100 kB)
+            'vendor-motion': ['motion'],
+            // Supabase client
+            'vendor-supabase': ['@supabase/supabase-js'],
+            // Icônes Lucide — chargé séparément pour ne pas polluer le chunk principal
+            'vendor-lucide': ['lucide-react'],
+            // Composants shadcn/ui + utilitaires
+            'vendor-ui': [
+              'class-variance-authority',
+              'clsx',
+              'tailwind-merge',
+              '@base-ui/react',
+            ],
+          },
+        },
+      },
+    },
   };
 });

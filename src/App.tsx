@@ -246,12 +246,12 @@ export default function App() {
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<AppView>('editor');
-  const [userId, setUserId] = useState<string | null>(import.meta.env.DEV ? 'dev-local-user' : null);
-  const [userEmail, setUserEmail] = useState(import.meta.env.DEV ? 'dev@local' : '');
-  const [accessStatus, setAccessStatus] = useState<AccessStatus>(import.meta.env.DEV ? 'approved' : 'checking');
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState('');
+  const [accessStatus, setAccessStatus] = useState<AccessStatus>('checking');
   const [accessMessage, setAccessMessage] = useState('');
   const [approvalRefreshKey, setApprovalRefreshKey] = useState(0);
-  const [isAuthReady, setIsAuthReady] = useState(import.meta.env.DEV);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>('synopsis');
   const [isLoaded, setIsLoaded] = useState(false);
   const [editingScene, setEditingScene] = useState<Scene | null>(null);
@@ -267,14 +267,6 @@ export default function App() {
   const [isChatLoading, setIsChatLoading] = useState(false);
 
   useEffect(() => {
-    if (import.meta.env.DEV) {
-      setUserId('dev-local-user');
-      setUserEmail('dev@local');
-      setAccessStatus('approved');
-      setIsAuthReady(true);
-      return;
-    }
-
     if (!supabase) {
       setIsAuthReady(true);
       return;

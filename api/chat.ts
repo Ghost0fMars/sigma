@@ -134,7 +134,6 @@ export default async function handler(req: any, res: any) {
         model: process.env.OPENAI_MODEL || 'gpt-4o',
         messages: [systemMessage, ...sanitizedMessages],
         max_completion_tokens: 1200,
-        temperature: 0.7,
       }),
     });
     data = await openaiResponse.json();

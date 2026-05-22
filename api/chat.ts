@@ -1,7 +1,7 @@
 
 import { DRAMATURGICAL_REFERENCES } from './_dramaturgical-system.js';
 
-const OPENAI_CHAT_URL   = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 const OPENAI_EMBED_URL  = 'https://api.openai.com/v1/embeddings';
 const EMBED_MODEL       = 'text-embedding-3-small';
 
@@ -20,6 +20,23 @@ Style : direct, bienveillant, professionnel. Sois précis et concret. Évite les
 Si l'auteur parle d'une scène spécifique, réfère-toi à son titre et son numéro. Si tu pointes un problème, propose toujours au moins une piste de résolution.
 
 ${DRAMATURGICAL_REFERENCES}`;
+
+function extractOutputText(response: any): string {
+  if (typeof response.output_text === 'string') {
+    return response.output_text;
+  }
+
+  const chunks: string[] = [];
+  for (const item of response.output ?? []) {
+    for (const content of item.content ?? []) {
+      if (typeof content.text === 'string') {
+        chunks.push(content.text);
+      }
+    }
+  }
+
+  return chunks.join('\n').trim();
+}
 
 // ---------- RAG : récupère les passages du corpus les plus proches de la requête ----------
 async function retrieveCorpusChunks(query: string, apiKey: string): Promise<string> {
@@ -116,24 +133,22 @@ export default async function handler(req: any, res: any) {
   const lastUserMessage = [...sanitizedMessages].reverse().find((m: any) => m.role === 'user')?.content ?? '';
   const corpusContext = lastUserMessage ? await retrieveCorpusChunks(lastUserMessage, apiKey) : '';
 
-  const systemMessage = {
-    role: 'system',
-    content: `${SYSTEM_PROMPT}\n\n===== PROJET EN COURS =====\n\n${projectContext}${corpusContext}`,
-  };
+  const instructions = `${SYSTEM_PROMPT}\n\n===== PROJET EN COURS =====\n\n${projectContext}${corpusContext}`;
 
   let openaiResponse: Response;
   let data: any;
   try {
-    openaiResponse = await fetch(OPENAI_CHAT_URL, {
+    openaiResponse = await fetch(OPENAI_RESPONSES_URL, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-4o',
-        messages: [systemMessage, ...sanitizedMessages],
-        max_completion_tokens: 1200,
+        model: process.env.OPENAI_MODEL || 'gpt-5',
+        instructions,
+        input: sanitizedMessages,
+        max_output_tokens: 1200,
       }),
     });
     data = await openaiResponse.json();
@@ -147,6 +162,6 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const reply = data.choices?.[0]?.message?.content ?? '';
+  const reply = extractOutputText(data);
   return res.status(200).json({ reply });
 }

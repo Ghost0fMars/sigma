@@ -23,15 +23,17 @@ function Select({
   value,
   onValueChange,
   children,
+  disabled = false,
 }: {
   value?: string
   onValueChange?: (value: any) => void
   children: React.ReactNode
+  disabled?: boolean
 }) {
   const [open, setOpen] = React.useState(false)
 
   return (
-    <SelectContext.Provider value={{ open, value, setOpen, onValueChange }}>
+    <SelectContext.Provider value={{ open, value, setOpen: disabled ? () => {} : setOpen, onValueChange }}>
       <div className="relative">{children}</div>
     </SelectContext.Provider>
   )

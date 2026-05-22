@@ -4,6 +4,7 @@ import { DRAMATURGICAL_REFERENCES } from './_dramaturgical-system.js';
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 const OPENAI_EMBED_URL  = 'https://api.openai.com/v1/embeddings';
 const EMBED_MODEL       = 'text-embedding-3-small';
+const DEFAULT_MAX_OUTPUT_TOKENS = 8000;
 
 const SYSTEM_PROMPT = `Tu es un script-doctor expert en dramaturgie cinématographique et consultant créatif. Tu travailles directement avec l'auteur sur son projet en cours.
 
@@ -36,6 +37,29 @@ function extractOutputText(response: any): string {
   }
 
   return chunks.join('\n').trim();
+}
+
+function getReasoningEffort(model: string): string | undefined {
+  if (process.env.OPENAI_REASONING_EFFORT) {
+    return process.env.OPENAI_REASONING_EFFORT;
+  }
+
+  if (model.startsWith('gpt-5.1')) {
+    return 'low';
+  }
+
+  if (model.startsWith('gpt-5') || /^o\d/.test(model)) {
+    return 'minimal';
+  }
+
+  return undefined;
+}
+
+function getMaxOutputTokens(): number {
+  const configured = Number(process.env.OPENAI_MAX_OUTPUT_TOKENS);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_MAX_OUTPUT_TOKENS;
 }
 
 // ---------- RAG : récupère les passages du corpus les plus proches de la requête ----------
@@ -134,6 +158,8 @@ export default async function handler(req: any, res: any) {
   const corpusContext = lastUserMessage ? await retrieveCorpusChunks(lastUserMessage, apiKey) : '';
 
   const instructions = `${SYSTEM_PROMPT}\n\n===== PROJET EN COURS =====\n\n${projectContext}${corpusContext}`;
+  const model = process.env.OPENAI_MODEL || 'gpt-5';
+  const reasoningEffort = getReasoningEffort(model);
 
   let openaiResponse: Response;
   let data: any;
@@ -145,10 +171,11 @@ export default async function handler(req: any, res: any) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-5',
+        model,
         instructions,
         input: sanitizedMessages,
-        max_output_tokens: 1200,
+        max_output_tokens: getMaxOutputTokens(),
+        ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
       }),
     });
     data = await openaiResponse.json();
@@ -163,5 +190,14 @@ export default async function handler(req: any, res: any) {
   }
 
   const reply = extractOutputText(data);
+  if (!reply) {
+    const details = data.status === 'incomplete' && data.incomplete_details?.reason
+      ? ` (${data.incomplete_details.reason})`
+      : '';
+    return res.status(502).json({
+      error: `OpenAI a renvoyé une réponse vide${details}. Augmentez OPENAI_MAX_OUTPUT_TOKENS si cela se reproduit.`,
+    });
+  }
+
   return res.status(200).json({ reply });
 }

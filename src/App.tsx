@@ -327,7 +327,11 @@ export default function App() {
       let data: Record<string, unknown>;
       try { data = await res.json(); } catch { throw new Error(`Erreur serveur HTTP ${res.status}`); }
       if (!res.ok) throw new Error((data.error as string) || `Erreur HTTP ${res.status}`);
-      setChatMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: typeof data.reply === 'string' ? data.reply.trim() : '' }]);
+      const reply = typeof data.reply === 'string' ? data.reply.trim() : '';
+      if (!reply) {
+        throw new Error("L'IA n'a pas renvoyé de texte. Réessayez, ou vérifiez les logs du serveur API.");
+      }
+      setChatMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: reply }]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Une erreur s'est produite.";
       setChatMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: `⚠️ ${msg}` }]);

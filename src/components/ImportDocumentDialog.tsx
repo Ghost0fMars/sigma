@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import { FileText, RefreshCw, Upload, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -39,7 +39,7 @@ export function ImportDocumentDialog({
   const [content, setContent] = useState('');
   const selectedType = DOCUMENT_TYPES.find((t) => t.value === documentType);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();

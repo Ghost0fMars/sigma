@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, type ReactElement } from 'react';
 import { ChevronDown, ChevronRight, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -28,7 +28,7 @@ function TheoryCard({
   isExpanded: boolean;
   onToggle: () => void;
   searchQuery: string;
-}) {
+}): ReactElement {
   const colorClass =
     TRADITION_COLORS[theory.tradition] ?? 'bg-gray-100 text-gray-800 border-gray-200';
 
@@ -158,7 +158,7 @@ export function NarratologyPanel() {
   }, [searchQuery, filteredTheories]);
 
   return (
-    <div className="pb-8">
+    <div className="overflow-hidden rounded-lg border border-[#393E46]/30 bg-white pb-8">
       {/* Header */}
       <div className="sticky top-0 z-20 border-b border-[#393E46] bg-white px-6 py-5">
         <h2 className="font-serif text-xl italic tracking-wide text-[#222831]">
@@ -170,7 +170,7 @@ export function NarratologyPanel() {
       </div>
 
       {/* Search + filters */}
-      <div className="sticky top-[73px] z-10 border-b border-[#393E46]/20 bg-[#EEEEEE]/95 px-6 py-3 space-y-3 backdrop-blur-sm">
+      <div className="sticky top-[73px] z-10 space-y-3 border-b border-[#393E46]/20 bg-[#EEEEEE]/95 px-6 py-3 backdrop-blur-sm">
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#222831]/35" />
           <Input

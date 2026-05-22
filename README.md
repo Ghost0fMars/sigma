@@ -19,7 +19,9 @@ Prérequis: Node.js.
    `npm install`
 2. Créez un fichier `.env.local` avec votre clé OpenAI:
    `OPENAI_API_KEY=votre_cle_openai`\n   `VITE_SUPABASE_URL=https://votre-projet.supabase.co`\n   `VITE_SUPABASE_ANON_KEY=votre_cle_anon_supabase`
-3. Lancez l'application:
+3. Lancez le serveur API dans un premier terminal:
+   `npm run api`
+4. Lancez l'application dans un second terminal:
    `npm run dev`
 
 L'application est servie par défaut sur [http://localhost:3000](http://localhost:3000).

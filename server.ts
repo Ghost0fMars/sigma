@@ -1,8 +1,11 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import express from 'express';
 import chatHandler from './api/chat';
 import generateHandler from './api/generate';
 import importHandler from './api/import';
+
+dotenv.config({ path: '.env.local' });
+dotenv.config();
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));

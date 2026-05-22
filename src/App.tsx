@@ -15,6 +15,7 @@ import {
   GripVertical,
   Info,
   LayoutDashboard,
+  Library,
   Lightbulb,
   LogOut,
   Menu,
@@ -53,9 +54,10 @@ import { cn } from '@/lib/utils';
 import { Project, Scene, SceneType, Step } from './types';
 import { AuthPage } from './AuthPage';
 import { supabase } from './supabaseClient';
+import { NarratologyPanel } from './NarratologyPanel';
 
 type AccessStatus = 'checking' | 'pending' | 'approved' | 'error';
-type AppView = 'projects' | 'editor';
+type AppView = 'projects' | 'editor' | 'narratology';
 
 type ChatMessage = {
   id: string;
@@ -244,12 +246,12 @@ export default function App() {
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<AppView>('editor');
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState('');
-  const [accessStatus, setAccessStatus] = useState<AccessStatus>('checking');
+  const [userId, setUserId] = useState<string | null>(import.meta.env.DEV ? 'dev-local-user' : null);
+  const [userEmail, setUserEmail] = useState(import.meta.env.DEV ? 'dev@local' : '');
+  const [accessStatus, setAccessStatus] = useState<AccessStatus>(import.meta.env.DEV ? 'approved' : 'checking');
   const [accessMessage, setAccessMessage] = useState('');
   const [approvalRefreshKey, setApprovalRefreshKey] = useState(0);
-  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(import.meta.env.DEV);
   const [currentStep, setCurrentStep] = useState<Step>('synopsis');
   const [isLoaded, setIsLoaded] = useState(false);
   const [editingScene, setEditingScene] = useState<Scene | null>(null);
@@ -265,6 +267,14 @@ export default function App() {
   const [isChatLoading, setIsChatLoading] = useState(false);
 
   useEffect(() => {
+    if (import.meta.env.DEV) {
+      setUserId('dev-local-user');
+      setUserEmail('dev@local');
+      setAccessStatus('approved');
+      setIsAuthReady(true);
+      return;
+    }
+
     if (!supabase) {
       setIsAuthReady(true);
       return;
@@ -984,6 +994,21 @@ ${getStepSnapshot(stepId)}`;
               </button>
             );
           })}
+
+          <div className="mx-4 my-1 border-t border-[#393E46]/20" />
+
+          <button
+            onClick={() => setCurrentView('narratology')}
+            className={cn(
+              'flex items-center gap-2.5 px-4 py-2.5 text-left text-sm font-medium transition-colors',
+              currentView === 'narratology'
+                ? 'bg-[#FFD369] text-[#222831]'
+                : 'text-[#222831]/55 hover:bg-[#EEEEEE] hover:text-[#222831]',
+            )}
+          >
+            <Library size={15} />
+            Narratologie
+          </button>
         </nav>
 
         <div className="space-y-1.5 border-t border-[#393E46] p-3">
@@ -1105,6 +1130,21 @@ ${getStepSnapshot(stepId)}`;
                       </button>
                     );
                   })}
+
+                  <div className="mx-4 my-1 border-t border-[#393E46]/20" />
+
+                  <button
+                    onClick={() => { setCurrentView('narratology'); setIsMobileNavOpen(false); }}
+                    className={cn(
+                      'flex items-center gap-2.5 px-4 py-3 text-left text-sm font-medium transition-colors',
+                      currentView === 'narratology'
+                        ? 'bg-[#FFD369] text-[#222831]'
+                        : 'text-[#222831]/55 hover:bg-[#EEEEEE] hover:text-[#222831]',
+                    )}
+                  >
+                    <Library size={15} />
+                    Narratologie
+                  </button>
                 </nav>
 
                 <div className="space-y-1.5 border-t border-[#393E46] p-3">
@@ -1192,7 +1232,9 @@ ${getStepSnapshot(stepId)}`;
         </aside>
 
         <section className="min-w-0">
-          {currentView === 'projects' ? (
+          {currentView === 'narratology' ? (
+            <NarratologyPanel />
+          ) : currentView === 'projects' ? (
             <ProjectsPage
               projects={savedProjects}
               currentProjectId={currentProjectId}

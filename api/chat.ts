@@ -1,7 +1,9 @@
 
 import { DRAMATURGICAL_REFERENCES } from './_dramaturgical-system.js';
 
-const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_CHAT_URL   = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_EMBED_URL  = 'https://api.openai.com/v1/embeddings';
+const EMBED_MODEL       = 'text-embedding-3-small';
 
 const SYSTEM_PROMPT = `Tu es un script-doctor expert en dramaturgie cinématographique et consultant créatif. Tu travailles directement avec l'auteur sur son projet en cours.
 
@@ -18,6 +20,48 @@ Style : direct, bienveillant, professionnel. Sois précis et concret. Évite les
 Si l'auteur parle d'une scène spécifique, réfère-toi à son titre et son numéro. Si tu pointes un problème, propose toujours au moins une piste de résolution.
 
 ${DRAMATURGICAL_REFERENCES}`;
+
+// ---------- RAG : récupère les passages du corpus les plus proches de la requête ----------
+async function retrieveCorpusChunks(query: string, apiKey: string): Promise<string> {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseKey) return '';
+
+  try {
+    // 1. Embed la requête
+    const embedRes = await fetch(OPENAI_EMBED_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: EMBED_MODEL, input: query }),
+    });
+    if (!embedRes.ok) return '';
+    const embedData = await embedRes.json() as { data: { embedding: number[] }[] };
+    const embedding = embedData.data[0].embedding;
+
+    // 2. Recherche vectorielle dans Supabase
+    const searchRes = await fetch(`${supabaseUrl}/rest/v1/rpc/search_narratology`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${supabaseKey}`,
+        apikey: supabaseKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query_embedding: embedding, match_count: 5, min_similarity: 0.5 }),
+    });
+    if (!searchRes.ok) return '';
+    const chunks = await searchRes.json() as { author: string; title: string; content: string }[];
+    if (!Array.isArray(chunks) || chunks.length === 0) return '';
+
+    // 3. Formate les passages récupérés
+    const formatted = chunks
+      .map(c => `[${c.author} — ${c.title}]\n${c.content}`)
+      .join('\n\n---\n\n');
+
+    return `\n\n===== CORPUS NARRATOLOGIQUE (passages pertinents) =====\n\n${formatted}\n\n=====`;
+  } catch {
+    return '';
+  }
+}
 
 function buildProjectContext(project: any): string {
   if (!project || typeof project !== 'object') return 'Aucun projet chargé.';
@@ -65,14 +109,17 @@ export default async function handler(req: any, res: any) {
 
   const projectContext = buildProjectContext(project);
 
-  const systemMessage = {
-    role: 'system',
-    content: `${SYSTEM_PROMPT}\n\n===== PROJET EN COURS =====\n\n${projectContext}`,
-  };
-
   const sanitizedMessages = messages
     .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
     .map((m: any) => ({ role: m.role, content: m.content }));
+
+  const lastUserMessage = [...sanitizedMessages].reverse().find((m: any) => m.role === 'user')?.content ?? '';
+  const corpusContext = lastUserMessage ? await retrieveCorpusChunks(lastUserMessage, apiKey) : '';
+
+  const systemMessage = {
+    role: 'system',
+    content: `${SYSTEM_PROMPT}\n\n===== PROJET EN COURS =====\n\n${projectContext}${corpusContext}`,
+  };
 
   let openaiResponse: Response;
   let data: any;

@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "index-corpus": "tsx scripts/index-corpus.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

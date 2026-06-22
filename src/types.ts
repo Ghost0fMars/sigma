@@ -4,16 +4,16 @@
  */
 
 export enum SceneType {
-  EXPOSITION = 'Exposition',
-  INCITING_INCIDENT = 'Incident Déclencheur',
-  PLOT_POINT_1 = 'Noeud Dramatique 1',
-  PINCH_POINT_1 = 'Point de Pression 1',
-  MIDPOINT = 'Milieu',
-  PINCH_POINT_2 = 'Point de Pression 2',
-  PLOT_POINT_2 = 'Noeud Dramatique 2',
-  CLIMAX = 'Climax',
-  RESOLUTION = 'Résolution',
-  OTHER = 'Autre',
+  EXPOSITION         = 'Exposition',
+  INCITING_INCIDENT  = 'Incident Déclencheur',
+  PLOT_POINT_1       = 'Noeud Dramatique 1',
+  PINCH_POINT_1      = 'Point de Pression 1',
+  MIDPOINT           = 'Milieu',
+  PINCH_POINT_2      = 'Point de Pression 2',
+  PLOT_POINT_2       = 'Noeud Dramatique 2',
+  CLIMAX             = 'Climax',
+  RESOLUTION         = 'Résolution',
+  OTHER              = 'Autre',
 }
 
 export interface Scene {
@@ -24,10 +24,9 @@ export interface Scene {
   description: string;
   dramaticInfo: string;
   type: SceneType;
-  // Intégrale dramatique S(t) = ∫ [V(t) · P(t|τ)] · C(t) dt
-  vt: number;   // Valeur de l'acte : -2 (très négatif) à +2 (très positif)
-  ct: number;   // Pression contextuelle : 0 (nulle) à 1 (maximale)
-  st?: number;  // Charge dramatique accumulée (calculée automatiquement)
+  vt: number;   // Valeur de l'acte : -2 à +2
+  ct: number;   // Pression contextuelle : 0 à 1
+  st?: number;  // Charge dramatique accumulée (calculée)
 }
 
 export interface Project {
@@ -42,3 +41,19 @@ export interface Project {
 }
 
 export type Step = 'synopsis' | 'developedSynopsis' | 'board' | 'treatment' | 'screenplay';
+
+export type AccessStatus = 'checking' | 'pending' | 'approved' | 'error';
+export type AppView      = 'projects' | 'editor' | 'narratology';
+
+export type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+export type SavedProject = {
+  id: string;
+  title: string;
+  updatedAt: string;
+  project: Project;
+};

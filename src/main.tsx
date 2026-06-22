@@ -1,11 +1,11 @@
-import { Component, StrictMode } from 'react';
+import { Component, StrictMode, type PropsWithChildren } from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import {registerServiceWorker} from './registerServiceWorker';
 
-class ErrorBoundary extends Component<{ children: any }, { error: Error | null }> {
-  state = { error: null };
+class ErrorBoundary extends Component<PropsWithChildren, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
   static getDerivedStateFromError(error: Error) { return { error }; }
   render() {
     if (this.state.error) {

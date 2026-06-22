@@ -1,7 +1,10 @@
 
 import { DRAMATURGICAL_REFERENCES } from './_dramaturgical-system.js';
 
-const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
+const OPENAI_EMBED_URL  = 'https://api.openai.com/v1/embeddings';
+const EMBED_MODEL       = 'text-embedding-3-small';
+const DEFAULT_MAX_OUTPUT_TOKENS = 8000;
 
 const SYSTEM_PROMPT = `Tu es un script-doctor expert en dramaturgie cinématographique et consultant créatif. Tu travailles directement avec l'auteur sur son projet en cours.
 
@@ -18,6 +21,88 @@ Style : direct, bienveillant, professionnel. Sois précis et concret. Évite les
 Si l'auteur parle d'une scène spécifique, réfère-toi à son titre et son numéro. Si tu pointes un problème, propose toujours au moins une piste de résolution.
 
 ${DRAMATURGICAL_REFERENCES}`;
+
+function extractOutputText(response: any): string {
+  if (typeof response.output_text === 'string') {
+    return response.output_text;
+  }
+
+  const chunks: string[] = [];
+  for (const item of response.output ?? []) {
+    for (const content of item.content ?? []) {
+      if (typeof content.text === 'string') {
+        chunks.push(content.text);
+      }
+    }
+  }
+
+  return chunks.join('\n').trim();
+}
+
+function getReasoningEffort(model: string): string | undefined {
+  if (process.env.OPENAI_REASONING_EFFORT) {
+    return process.env.OPENAI_REASONING_EFFORT;
+  }
+
+  if (model.startsWith('gpt-5.1')) {
+    return 'low';
+  }
+
+  if (model.startsWith('gpt-5') || /^o\d/.test(model)) {
+    return 'minimal';
+  }
+
+  return undefined;
+}
+
+function getMaxOutputTokens(): number {
+  const configured = Number(process.env.OPENAI_MAX_OUTPUT_TOKENS);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_MAX_OUTPUT_TOKENS;
+}
+
+// ---------- RAG : récupère les passages du corpus les plus proches de la requête ----------
+async function retrieveCorpusChunks(query: string, apiKey: string): Promise<string> {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseKey) return '';
+
+  try {
+    // 1. Embed la requête
+    const embedRes = await fetch(OPENAI_EMBED_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: EMBED_MODEL, input: query }),
+    });
+    if (!embedRes.ok) return '';
+    const embedData = await embedRes.json() as { data: { embedding: number[] }[] };
+    const embedding = embedData.data[0].embedding;
+
+    // 2. Recherche vectorielle dans Supabase
+    const searchRes = await fetch(`${supabaseUrl}/rest/v1/rpc/search_narratology`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${supabaseKey}`,
+        apikey: supabaseKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query_embedding: embedding, match_count: 5, min_similarity: 0.5 }),
+    });
+    if (!searchRes.ok) return '';
+    const chunks = await searchRes.json() as { author: string; title: string; content: string }[];
+    if (!Array.isArray(chunks) || chunks.length === 0) return '';
+
+    // 3. Formate les passages récupérés
+    const formatted = chunks
+      .map(c => `[${c.author} — ${c.title}]\n${c.content}`)
+      .join('\n\n---\n\n');
+
+    return `\n\n===== CORPUS NARRATOLOGIQUE (passages pertinents) =====\n\n${formatted}\n\n=====`;
+  } catch {
+    return '';
+  }
+}
 
 function buildProjectContext(project: any): string {
   if (!project || typeof project !== 'object') return 'Aucun projet chargé.';
@@ -65,29 +150,32 @@ export default async function handler(req: any, res: any) {
 
   const projectContext = buildProjectContext(project);
 
-  const systemMessage = {
-    role: 'system',
-    content: `${SYSTEM_PROMPT}\n\n===== PROJET EN COURS =====\n\n${projectContext}`,
-  };
-
   const sanitizedMessages = messages
     .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
     .map((m: any) => ({ role: m.role, content: m.content }));
 
+  const lastUserMessage = [...sanitizedMessages].reverse().find((m: any) => m.role === 'user')?.content ?? '';
+  const corpusContext = lastUserMessage ? await retrieveCorpusChunks(lastUserMessage, apiKey) : '';
+
+  const instructions = `${SYSTEM_PROMPT}\n\n===== PROJET EN COURS =====\n\n${projectContext}${corpusContext}`;
+  const model = process.env.OPENAI_MODEL || 'gpt-5';
+  const reasoningEffort = getReasoningEffort(model);
+
   let openaiResponse: Response;
   let data: any;
   try {
-    openaiResponse = await fetch(OPENAI_CHAT_URL, {
+    openaiResponse = await fetch(OPENAI_RESPONSES_URL, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-4o',
-        messages: [systemMessage, ...sanitizedMessages],
-        max_completion_tokens: 1200,
-        temperature: 0.7,
+        model,
+        instructions,
+        input: sanitizedMessages,
+        max_output_tokens: getMaxOutputTokens(),
+        ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
       }),
     });
     data = await openaiResponse.json();
@@ -101,6 +189,15 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const reply = data.choices?.[0]?.message?.content ?? '';
+  const reply = extractOutputText(data);
+  if (!reply) {
+    const details = data.status === 'incomplete' && data.incomplete_details?.reason
+      ? ` (${data.incomplete_details.reason})`
+      : '';
+    return res.status(502).json({
+      error: `OpenAI a renvoyé une réponse vide${details}. Augmentez OPENAI_MAX_OUTPUT_TOKENS si cela se reproduit.`,
+    });
+  }
+
   return res.status(200).json({ reply });
 }

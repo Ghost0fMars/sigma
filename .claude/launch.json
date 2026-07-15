@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vite-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "api-server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "api"],
+      "port": 3002
+    }
+  ]
+}

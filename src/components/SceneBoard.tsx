@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Edit3, GripVertical, LayoutDashboard, Lightbulb, Plus, Trash2, Wand2 } from 'lucide-react';
+import { Edit3, GripVertical, LayoutDashboard, Lightbulb, Plus, Trash2, Undo2, Wand2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -9,11 +9,11 @@ import { computeIntegrale, vtLabel, ctLabel, getSceneColor } from '../lib/dramat
 import { SuggestionPanel } from './SuggestionPanel';
 
 export function SceneBoard({
-  scenes, isAiLoading, isAnalysisLoading, suggestions,
-  onAiAssist, onAiAnalyze, onAddScene, onEditScene, onRemoveScene, onReorderScenes,
+  scenes, isAiLoading, isAnalysisLoading, suggestions, canUndo,
+  onAiAssist, onAiAnalyze, onUndoAiAssist, onAddScene, onEditScene, onRemoveScene, onReorderScenes,
 }: {
-  scenes: Scene[]; isAiLoading: boolean; isAnalysisLoading: boolean; suggestions?: string;
-  onAiAssist: () => void; onAiAnalyze: () => void; onAddScene: () => void;
+  scenes: Scene[]; isAiLoading: boolean; isAnalysisLoading: boolean; suggestions?: string; canUndo?: boolean;
+  onAiAssist: () => void; onAiAnalyze: () => void; onUndoAiAssist?: () => void; onAddScene: () => void;
   onEditScene: (s: Scene) => void; onRemoveScene: (id: string) => void;
   onReorderScenes: (s: Scene[]) => void;
 }) {
@@ -45,6 +45,13 @@ export function SceneBoard({
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          {canUndo && (
+            <Button variant="ghost" className="text-xs uppercase tracking-widest text-[#393E46] hover:text-[#222831]"
+              onClick={onUndoAiAssist} disabled={isAiLoading || isAnalysisLoading}>
+              <Undo2 size={14} className="mr-2" />
+              Annuler
+            </Button>
+          )}
           <Button variant="ghost" className="text-xs uppercase tracking-widest text-[#393E46] hover:text-[#222831]"
             onClick={onAiAnalyze} disabled={isAnalysisLoading || isAiLoading}>
             <Lightbulb size={14} className={cn('mr-2', isAnalysisLoading && 'animate-pulse')} />

@@ -1,16 +1,16 @@
 import type { ReactNode } from 'react';
-import { Lightbulb, Wand2 } from 'lucide-react';
+import { Lightbulb, Undo2, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { SuggestionPanel } from './SuggestionPanel';
 
 export function StepContent({
-  title, description, children, onAiAssist, onAiAnalyze,
-  isAiLoading, isAnalysisLoading, suggestions,
+  title, description, children, onAiAssist, onAiAnalyze, onUndoAiAssist,
+  isAiLoading, isAnalysisLoading, canUndo, suggestions,
 }: {
   title: string; description: string; children: ReactNode;
-  onAiAssist?: () => void; onAiAnalyze?: () => void;
-  isAiLoading?: boolean; isAnalysisLoading?: boolean; suggestions?: string;
+  onAiAssist?: () => void; onAiAnalyze?: () => void; onUndoAiAssist?: () => void;
+  isAiLoading?: boolean; isAnalysisLoading?: boolean; canUndo?: boolean; suggestions?: string;
 }) {
   return (
     <div className="space-y-6">
@@ -20,6 +20,14 @@ export function StepContent({
           <p className="mt-1 text-sm text-[#393E46]">{description}</p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          {canUndo && (
+            <Button variant="outline" size="sm"
+              className="w-full border-[#393E46] text-xs uppercase tracking-widest text-[#393E46] hover:bg-[#393E46] hover:text-[#FFFFFF] sm:w-auto"
+              onClick={onUndoAiAssist} disabled={isAiLoading || isAnalysisLoading}>
+              <Undo2 size={14} className="mr-2" />
+              Annuler la génération
+            </Button>
+          )}
           <Button variant="outline" size="sm"
             className="w-full border-[#393E46] text-xs uppercase tracking-widest text-[#393E46] hover:bg-[#393E46] hover:text-[#FFFFFF] sm:w-auto"
             onClick={onAiAnalyze} disabled={isAnalysisLoading || isAiLoading}>

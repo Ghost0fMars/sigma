@@ -99,7 +99,7 @@ Alternative : double-cliquez sur `start-auteur.cmd`, puis ouvrez [http://localho
 4. Copiez `Project URL` et `anon public key` depuis `Project Settings > API`.
 5. Renseignez `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` (en local dans `.env.local`, en production dans Vercel).
 
-Les projets d'écriture sont pour l'instant sauvegardés dans le navigateur, isolés par utilisateur connecté. Une synchronisation vers une table Supabase est envisagée (voir feuille de route).
+Les projets d'écriture sont sauvegardés dans le navigateur (`localStorage`), isolés par utilisateur connecté, et synchronisés en best-effort vers une table Supabase `projects` à chaque sauvegarde manuelle. En cas d'échec réseau, le projet reste utilisable localement et une nouvelle tentative de synchronisation est faite automatiquement au chargement suivant de l'application. La page « Mes Projets » affiche un badge **Synchronisé** / **Local uniquement** par projet pour rendre cet état visible — un projet resté « Local uniquement » peut être perdu en cas de changement de navigateur ou de vidage du cache avant sa prochaine synchronisation réussie.
 
 ### Approbation manuelle des comptes
 
@@ -153,7 +153,7 @@ npm run clean    # supprime le dossier dist
 
 ## Données & confidentialité
 
-SIGMA manipule deux types de données : vos **projets d'écriture** (stockés localement dans votre navigateur) et, si vous créez un compte, votre **e-mail d'authentification** (géré par Supabase). Aucune donnée tierce sensible n'est traitée. Les textes envoyés à l'IA transitent par l'API OpenAI le temps de la génération.
+SIGMA manipule deux types de données : vos **projets d'écriture** (stockés localement dans votre navigateur, et synchronisés en best-effort vers Supabase si l'application est configurée avec des identifiants Supabase — voir « Configurer Supabase » ci-dessus) et, si vous créez un compte, votre **e-mail d'authentification** (géré par Supabase). Aucune donnée tierce sensible n'est traitée. Les textes envoyés à l'IA transitent par l'API OpenAI le temps de la génération.
 
 ---
 
@@ -161,7 +161,7 @@ SIGMA manipule deux types de données : vos **projets d'écriture** (stockés lo
 
 - [ ] **Cartographie de la tension dramatique S(t)** le long du scénario (visualisation de l'Intégrale Dramatique).
 - [ ] Modélisation du **tenseur de contexte C** : friction entre trajectoires des personnages et antagonisme du monde.
-- [ ] Synchronisation optionnelle des projets vers Supabase.
+- [x] Synchronisation best-effort des projets vers Supabase (avec badge de statut par projet et retentative automatique au chargement).
 
 ---
 

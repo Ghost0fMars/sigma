@@ -51,9 +51,12 @@ export type ChatMessage = {
   content: string;
 };
 
+export type SyncStatus = 'synced' | 'local-only';
+
 export type SavedProject = {
   id: string;
   title: string;
   updatedAt: string;
   project: Project;
+  syncStatus: SyncStatus;
 };

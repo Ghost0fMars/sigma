@@ -1,3 +1,10 @@
+/**
+ * Source de vérité unique du corpus narratologique de Sigma.
+ * `api/_dramaturgical-system.ts` est GÉNÉRÉ à partir de ce fichier —
+ * ne pas l'éditer à la main, lancer `npm run sync-dramaturgical` après
+ * toute modification ici (voir scripts/sync-dramaturgical-system.ts).
+ */
+
 export interface NarratologyConcept {
   name: string;
   definition: string;
@@ -286,3 +293,42 @@ export const NARRATOLOGY_THEORIES: NarratologyTheory[] = [
     useInScreenwriting: 'L\'Intégrale Dramatique est le moteur analytique de Sigma. V(t) et C(t) se renseignent pour chaque scène dans le tableau scène-à-scène, et S(t) est calculée automatiquement pour visualiser la courbe dramatique du scénario.',
   },
 ];
+
+const USAGE_GUIDE = `## COMMENT UTILISER CES CADRES
+
+Quand tu analyses ou génères :
+1. Identifie d'abord le MYTHOS dominant (Frye) — il détermine la dynamique S(t) cible
+2. Vérifie que chaque scène a une VALEUR DRAMATIQUE qui bascule (McKee)
+3. Assure-toi que l'antagoniste révèle la FAIBLESSE du héros (Truby)
+4. Cherche l'ANAGNORISIS — à quel moment le héros (et le spectateur) comprend-il ? (Aristote)
+5. Identifie les ACTANTS du récit : qui est le Sujet, l'Objet, le Destinateur ? (Greimas)
+6. Vérifie la STRUCTURE TEMPORELLE : analepses, prolepses, rythme de la narration (Genette)
+7. Cherche les CODES ACTIFS dans chaque scène : herméneutique (mystère), proaïrétique (action), sémique (caractère) (Barthes)
+8. Calibre V(t) et C(t) pour que S(t) monte progressivement avec le mythos choisi (Intégrale Dramatique)
+9. Le climax doit être surprenant ET inévitable — concordance discordante (Aristote + Ricoeur)`;
+
+function lastName(author: string): string {
+  return author.trim().split(/\s+/).pop()!.toUpperCase();
+}
+
+/**
+ * Sérialise NARRATOLOGY_THEORIES en prose, dans le même format que le texte
+ * historiquement écrit à la main dans api/_dramaturgical-system.ts.
+ * Utilisé par scripts/sync-dramaturgical-system.ts pour régénérer ce fichier.
+ */
+export function serializeTheoriesToPrompt(): string {
+  const sections = NARRATOLOGY_THEORIES.map(theory => {
+    const heading = `### ${lastName(theory.author)} — ${theory.work} (${theory.year})`;
+    const bullets = theory.concepts.map(c => `- ${c.name} : ${c.definition}`);
+    if (theory.useInScreenwriting) {
+      bullets.push(`- Application : ${theory.useInScreenwriting}`);
+    }
+    return [heading, ...bullets].join('\n');
+  });
+
+  return [
+    '## CADRES THÉORIQUES DE RÉFÉRENCE',
+    ...sections,
+    USAGE_GUIDE,
+  ].join('\n\n');
+}

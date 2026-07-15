@@ -19,7 +19,7 @@ import { Input }    from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { cn }       from '@/lib/utils';
 
-import { Project, Scene, SceneType, Step, AccessStatus, AppView, ChatMessage, SavedProject } from './types';
+import { Project, Scene, SceneType, Step, AccessStatus, AppView, ChatMessage, SavedProject, SyncStatus } from './types';
 import { AuthPage }             from './AuthPage';
 import { supabase }             from './supabaseClient';
 
@@ -60,10 +60,12 @@ function normalizeSavedProjects(value: unknown): SavedProject[] {
   return value
     .filter((item): item is Partial<SavedProject> => Boolean(item && typeof item === 'object'))
     .map((item) => ({
-      id:        typeof item.id        === 'string' ? item.id        : crypto.randomUUID(),
-      title:     typeof item.title     === 'string' && item.title.trim() ? item.title : 'Sans titre',
-      updatedAt: typeof item.updatedAt === 'string' ? item.updatedAt : new Date().toISOString(),
-      project:   normalizeProject(item.project),
+      id:         typeof item.id        === 'string' ? item.id        : crypto.randomUUID(),
+      title:      typeof item.title     === 'string' && item.title.trim() ? item.title : 'Sans titre',
+      updatedAt:  typeof item.updatedAt === 'string' ? item.updatedAt : new Date().toISOString(),
+      project:    normalizeProject(item.project),
+      // Statut inconnu tant qu'une synchronisation réussie n'est pas confirmée par Supabase.
+      syncStatus: item.syncStatus === 'synced' ? 'synced' as const : 'local-only' as const,
     }));
 }
 
@@ -97,6 +99,7 @@ export default function App() {
   const [isChatOpen, setIsChatOpen]         = useState(false);
   const [chatMessages, setChatMessages]     = useState<ChatMessage[]>([]);
   const [isChatLoading, setIsChatLoading]   = useState(false);
+  const [lastAiSnapshot, setLastAiSnapshot] = useState<{ stepId: Step; scenes?: Scene[]; text?: string } | null>(null);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -211,9 +214,17 @@ export default function App() {
           applyProjects(local);
           return;
         }
-        const loaded: SavedProject[] = data.map((row) => ({
-          id: row.id, title: row.title, updatedAt: row.updated_at, project: normalizeProject(row.data),
+        const remote: SavedProject[] = data.map((row) => ({
+          id: row.id, title: row.title, updatedAt: row.updated_at, project: normalizeProject(row.data), syncStatus: 'synced',
         }));
+        // Les projets encore "local-only" (jamais confirmés par Supabase) n'existent pas côté
+        // serveur : les exclure ici les ferait disparaître silencieusement de la liste au moindre
+        // rechargement. On les conserve donc en les fusionnant avec la liste distante.
+        const remoteIds = new Set(remote.map((p) => p.id));
+        const localOnly = normalizeSavedProjects(JSON.parse(localStorage.getItem(projectsKey) || '[]'))
+          .filter((sp) => sp.syncStatus !== 'synced' && !remoteIds.has(sp.id));
+        const loaded = [...remote, ...localOnly]
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
         localStorage.setItem(projectsKey, JSON.stringify(loaded));
         applyProjects(loaded);
       });
@@ -254,12 +265,21 @@ export default function App() {
     localStorage.setItem(getUserStorageKey(PROJECTS_KEY, userId), JSON.stringify(projects));
   };
 
+  const updateSavedProjectSyncStatus = (id: string, syncStatus: SyncStatus) => {
+    if (!userId) return;
+    setSavedProjects((prev) => {
+      const next = prev.map((p) => (p.id === id ? { ...p, syncStatus } : p));
+      localStorage.setItem(getUserStorageKey(PROJECTS_KEY, userId), JSON.stringify(next));
+      return next;
+    });
+  };
+
   const saveCurrentProject = () => {
     if (!userId) return;
     const id    = currentProjectId ?? crypto.randomUUID();
     const now   = new Date().toISOString();
     const title = project.title.trim() || 'Sans titre';
-    const saved: SavedProject = { id, title, updatedAt: now, project: { ...project, title } };
+    const saved: SavedProject = { id, title, updatedAt: now, project: { ...project, title }, syncStatus: 'local-only' };
     const next  = [saved, ...savedProjects.filter((p) => p.id !== id)];
     setProject(saved.project);
     setCurrentProjectId(id);
@@ -267,21 +287,40 @@ export default function App() {
     localStorage.setItem(getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId), id);
     if (supabase) {
       supabase.from('projects').upsert({ id, user_id: userId, title, updated_at: now, data: saved.project })
-        .then(({ error }) => setStatusMessage(error ? 'Sauvegardé localement uniquement — synchronisation Supabase échouée.' : 'Projet sauvegardé et synchronisé.'));
+        .then(({ error }) => {
+          setStatusMessage(error ? 'Sauvegardé localement uniquement — synchronisation Supabase échouée.' : 'Projet sauvegardé et synchronisé.');
+          updateSavedProjectSyncStatus(id, error ? 'local-only' : 'synced');
+        });
     } else { setStatusMessage('Projet sauvegardé localement.'); }
   };
+
+  // Retente une fois par session la synchronisation des projets restés "local-only"
+  // (ex. échec réseau lors d'une sauvegarde précédente), pour ne pas dépendre uniquement
+  // d'une nouvelle sauvegarde manuelle.
+  useEffect(() => {
+    if (!isLoaded || !userId || !supabase || accessStatus !== 'approved') return;
+    const unsynced = savedProjects.filter((p) => p.syncStatus !== 'synced');
+    if (unsynced.length === 0) return;
+    unsynced.forEach((sp) => {
+      supabase.from('projects')
+        .upsert({ id: sp.id, user_id: userId, title: sp.title, updated_at: sp.updatedAt, data: sp.project })
+        .then(({ error }) => { if (!error) updateSavedProjectSyncStatus(sp.id, 'synced'); });
+    });
+    // Ne s'exécute qu'au chargement initial des projets, pas à chaque changement de savedProjects.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, userId, accessStatus]);
 
   const openSavedProject = (sp: SavedProject) => {
     if (!userId) return;
     setProject(sp.project); setCurrentProjectId(sp.id); setCurrentStep('synopsis');
-    setCurrentView('editor'); setAnalysisSuggestions({});
+    setCurrentView('editor'); setAnalysisSuggestions({}); setLastAiSnapshot(null);
     localStorage.setItem(getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId), sp.id);
     setStatusMessage('Projet ouvert.');
   };
 
   const createNewProject = () => {
     setProject({ ...DEFAULT_PROJECT, title: 'Sans titre' }); setCurrentProjectId(null);
-    setCurrentStep('synopsis'); setCurrentView('editor'); setAnalysisSuggestions({});
+    setCurrentStep('synopsis'); setCurrentView('editor'); setAnalysisSuggestions({}); setLastAiSnapshot(null);
     setStatusMessage('Nouveau projet prêt.');
   };
 
@@ -310,7 +349,7 @@ export default function App() {
           })) : [],
       };
       setProject(imported); setCurrentProjectId(null); setCurrentStep('synopsis');
-      setCurrentView('editor'); setAnalysisSuggestions({}); setIsImportDialogOpen(false);
+      setCurrentView('editor'); setAnalysisSuggestions({}); setLastAiSnapshot(null); setIsImportDialogOpen(false);
       setStatusMessage(`Projet « ${imported.title} » reconstruit. Pensez à le sauvegarder.`);
     } catch (err) {
       console.error(err); setStatusMessage("L'import a échoué. Vérifiez OPENAI_API_KEY dans Vercel ou .env.local.");
@@ -373,6 +412,13 @@ export default function App() {
   };
 
   const handleAiAssist = async (stepId: Step) => {
+    const hasExistingContent = stepId === 'board'
+      ? project.scenes.length > 0
+      : project[stepId].trim().length > 0;
+    if (hasExistingContent && !window.confirm("L'assistant IA va remplacer le contenu actuel de cette étape par sa proposition. Continuer ?")) {
+      return;
+    }
+
     setIsAiLoading(true); setStatusMessage('Génération IA en cours...');
     try {
       const ctx = `Titre: ${project.title}\nLogline: ${project.logline}\nSynopsis: ${project.synopsis}\nSynopsis développé: ${project.developedSynopsis}\nScènes: ${JSON.stringify(project.scenes)}\nTraitement: ${project.treatment}`;
@@ -396,13 +442,17 @@ export default function App() {
 
       if (stepId === 'board') {
         const json = JSON.parse(newText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '')) as Partial<Scene>[];
+        setLastAiSnapshot({ stepId, scenes: project.scenes });
         updateProject({ scenes: json.map((s, i) => createScene(i, {
           title: s.title || `Scène ${i + 1}`, indications: s.indications || 'INT. LIEU - JOUR',
           description: s.description || '', dramaticInfo: s.dramaticInfo || '',
           type: Object.values(SceneType).includes(s.type as SceneType) ? s.type as SceneType : SceneType.OTHER,
         })) });
-      } else { updateProject({ [stepId]: newText }); }
-      setStatusMessage('Proposition IA intégrée.');
+      } else {
+        setLastAiSnapshot({ stepId, text: project[stepId] });
+        updateProject({ [stepId]: newText });
+      }
+      setStatusMessage('Proposition IA intégrée. Vous pouvez annuler cette génération si besoin.');
     } catch (err) {
       console.error(err); setStatusMessage("La génération IA a échoué. Vérifiez OPENAI_API_KEY dans Vercel ou .env.local.");
     } finally { setIsAiLoading(false); }
@@ -435,6 +485,13 @@ export default function App() {
   const reorderScenes = (next: Scene[]) => updateProject({ scenes: next.map((s, i) => ({ ...s, order: i })) });
 
   const resetProject  = () => { if (!window.confirm('Effacer ce projet localement ?')) return; if (userId) localStorage.removeItem(`${STORAGE_KEY}:${userId}`); setProject(DEFAULT_PROJECT); setStatusMessage('Projet réinitialisé.'); };
+  const undoLastAiAssist = () => {
+    if (!lastAiSnapshot) return;
+    if (lastAiSnapshot.stepId === 'board') { updateProject({ scenes: lastAiSnapshot.scenes ?? [] }); }
+    else { updateProject({ [lastAiSnapshot.stepId]: lastAiSnapshot.text ?? '' }); }
+    setStatusMessage('Dernière génération IA annulée.');
+    setLastAiSnapshot(null);
+  };
   const exportProject = () => { const slug = (project.title || 'sigma').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''); downloadText(`${slug || 'sigma'}.md`, asMarkdown(project)); setStatusMessage('Export Markdown téléchargé.'); };
   const signOut       = async () => { setAccessStatus('pending'); setAccessMessage(''); await supabase?.auth.signOut(); };
   const refreshApproval = () => setApprovalRefreshKey((v) => v + 1);
@@ -615,7 +672,7 @@ export default function App() {
                   <NarratologyPanel />
                 ) : currentView === 'projects' ? (
                   <ProjectsPage
-                    projects={savedProjects} currentProjectId={currentProjectId}
+                    projects={savedProjects} currentProjectId={currentProjectId} supabaseEnabled={Boolean(supabase)}
                     onCreateProject={createNewProject} onOpenProject={openSavedProject}
                     onDeleteProject={deleteSavedProject} onImportDocument={() => setIsImportDialogOpen(true)} />
                 ) : (
@@ -626,6 +683,7 @@ export default function App() {
                       {currentStep === 'synopsis' && (
                         <StepContent title="Synopsis" description="Le coeur de votre histoire résumé en quelques paragraphes."
                           onAiAssist={() => handleAiAssist('synopsis')} onAiAnalyze={() => handleAiAnalysis('synopsis')}
+                          onUndoAiAssist={undoLastAiAssist} canUndo={lastAiSnapshot?.stepId === 'synopsis'}
                           isAiLoading={isAiLoading} isAnalysisLoading={isAnalysisLoading} suggestions={analysisSuggestions.synopsis}>
                           <Textarea placeholder="Une phrase simple suffit pour commencer: quelqu'un veut quelque chose, mais..."
                             className="min-h-[420px] resize-none border-none bg-transparent p-0 text-lg leading-relaxed shadow-none focus-visible:ring-0"
@@ -635,6 +693,7 @@ export default function App() {
                       {currentStep === 'developedSynopsis' && (
                         <StepContent title="Synopsis développé" description="Approfondissez l'intrigue, les personnages et les arcs dramatiques."
                           onAiAssist={() => handleAiAssist('developedSynopsis')} onAiAnalyze={() => handleAiAnalysis('developedSynopsis')}
+                          onUndoAiAssist={undoLastAiAssist} canUndo={lastAiSnapshot?.stepId === 'developedSynopsis'}
                           isAiLoading={isAiLoading} isAnalysisLoading={isAnalysisLoading} suggestions={analysisSuggestions.developedSynopsis}>
                           <Textarea placeholder="Décrivez l'évolution de l'intrigue en détail..."
                             className="min-h-[520px] resize-none border-none bg-transparent p-0 text-lg leading-relaxed shadow-none focus-visible:ring-0"
@@ -643,14 +702,16 @@ export default function App() {
                       )}
                       {currentStep === 'board' && (
                         <SceneBoard scenes={project.scenes} isAiLoading={isAiLoading} isAnalysisLoading={isAnalysisLoading}
-                          suggestions={analysisSuggestions.board}
+                          suggestions={analysisSuggestions.board} canUndo={lastAiSnapshot?.stepId === 'board'}
                           onAiAssist={() => handleAiAssist('board')} onAiAnalyze={() => handleAiAnalysis('board')}
+                          onUndoAiAssist={undoLastAiAssist}
                           onAddScene={addScene} onEditScene={setEditingScene}
                           onRemoveScene={removeScene} onReorderScenes={reorderScenes} />
                       )}
                       {currentStep === 'treatment' && (
                         <StepContent title="Traitement" description="Narratif au présent de l'indicatif. Donnez vie aux actions, au rythme et aux nuances."
                           onAiAssist={() => handleAiAssist('treatment')} onAiAnalyze={() => handleAiAnalysis('treatment')}
+                          onUndoAiAssist={undoLastAiAssist} canUndo={lastAiSnapshot?.stepId === 'treatment'}
                           isAiLoading={isAiLoading} isAnalysisLoading={isAnalysisLoading} suggestions={analysisSuggestions.treatment}>
                           <Textarea placeholder="Jean entre dans la pièce. Il sent la tension monter..."
                             className="min-h-[520px] resize-none border-none bg-transparent p-0 text-lg leading-relaxed shadow-none focus-visible:ring-0"
@@ -660,6 +721,7 @@ export default function App() {
                       {currentStep === 'screenplay' && (
                         <StepContent title="Scénario" description="Version au format de lecture: séquences, action, dialogues."
                           onAiAssist={() => handleAiAssist('screenplay')} onAiAnalyze={() => handleAiAnalysis('screenplay')}
+                          onUndoAiAssist={undoLastAiAssist} canUndo={lastAiSnapshot?.stepId === 'screenplay'}
                           isAiLoading={isAiLoading} isAnalysisLoading={isAnalysisLoading} suggestions={analysisSuggestions.screenplay}>
                           <div className="mx-auto min-h-[760px] max-w-3xl rounded-sm bg-white p-6 font-mono text-[15px] leading-tight text-black shadow-2xl sm:p-12">
                             <Textarea placeholder={'INT. BUREAU - JOUR\n\nJEAN est assis à son bureau...'}

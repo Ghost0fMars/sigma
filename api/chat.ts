@@ -1,10 +1,8 @@
 
 import { DRAMATURGICAL_REFERENCES } from './_dramaturgical-system.js';
 import { loadCorpus, searchCorpus } from './_corpus.js';
+import { chatCompletion, embed, getAlbertApiKey, sendAlbertError } from './_albert.js';
 
-const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
-const OPENAI_EMBED_URL  = 'https://api.openai.com/v1/embeddings';
-const EMBED_MODEL       = 'text-embedding-3-small';
 const DEFAULT_MAX_OUTPUT_TOKENS = 8000;
 
 const SYSTEM_PROMPT = `Tu es un script-doctor expert en dramaturgie cinématographique et consultant créatif. Tu travailles directement avec l'auteur sur son projet en cours.
@@ -23,60 +21,20 @@ Si l'auteur parle d'une scène spécifique, réfère-toi à son titre et son num
 
 ${DRAMATURGICAL_REFERENCES}`;
 
-function extractOutputText(response: any): string {
-  if (typeof response.output_text === 'string') {
-    return response.output_text;
-  }
-
-  const chunks: string[] = [];
-  for (const item of response.output ?? []) {
-    for (const content of item.content ?? []) {
-      if (typeof content.text === 'string') {
-        chunks.push(content.text);
-      }
-    }
-  }
-
-  return chunks.join('\n').trim();
-}
-
-function getReasoningEffort(model: string): string | undefined {
-  if (process.env.OPENAI_REASONING_EFFORT) {
-    return process.env.OPENAI_REASONING_EFFORT;
-  }
-
-  if (model.startsWith('gpt-5.1')) {
-    return 'low';
-  }
-
-  if (model.startsWith('gpt-5') || /^o\d/.test(model)) {
-    return 'minimal';
-  }
-
-  return undefined;
-}
-
 function getMaxOutputTokens(): number {
-  const configured = Number(process.env.OPENAI_MAX_OUTPUT_TOKENS);
+  const configured = Number(process.env.ALBERT_MAX_OUTPUT_TOKENS);
   return Number.isFinite(configured) && configured > 0
     ? configured
     : DEFAULT_MAX_OUTPUT_TOKENS;
 }
 
 // ---------- RAG : récupère les passages du corpus les plus proches de la requête ----------
-async function retrieveCorpusChunks(query: string, apiKey: string): Promise<string> {
+async function retrieveCorpusChunks(query: string): Promise<string> {
   if (!loadCorpus()) return '';
 
   try {
     // 1. Embed la requête
-    const embedRes = await fetch(OPENAI_EMBED_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: EMBED_MODEL, input: query }),
-    });
-    if (!embedRes.ok) return '';
-    const embedData = await embedRes.json() as { data: { embedding: number[] }[] };
-    const embedding = embedData.data[0].embedding;
+    const [embedding] = await embed([query]);
 
     // 2. Recherche vectorielle dans le corpus local
     const chunks = searchCorpus(embedding, 5, 0.5);
@@ -127,9 +85,10 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY is not configured' });
+  try {
+    getAlbertApiKey();
+  } catch (err) {
+    return sendAlbertError(res, err);
   }
 
   const { messages, project } = req.body ?? {};
@@ -144,49 +103,17 @@ export default async function handler(req: any, res: any) {
     .map((m: any) => ({ role: m.role, content: m.content }));
 
   const lastUserMessage = [...sanitizedMessages].reverse().find((m: any) => m.role === 'user')?.content ?? '';
-  const corpusContext = lastUserMessage ? await retrieveCorpusChunks(lastUserMessage, apiKey) : '';
+  const corpusContext = lastUserMessage ? await retrieveCorpusChunks(lastUserMessage) : '';
 
   const instructions = `${SYSTEM_PROMPT}\n\n===== PROJET EN COURS =====\n\n${projectContext}${corpusContext}`;
-  const model = process.env.OPENAI_MODEL || 'gpt-5';
-  const reasoningEffort = getReasoningEffort(model);
 
-  let openaiResponse: Response;
-  let data: any;
   try {
-    openaiResponse = await fetch(OPENAI_RESPONSES_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        instructions,
-        input: sanitizedMessages,
-        max_output_tokens: getMaxOutputTokens(),
-        ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
-      }),
-    });
-    data = await openaiResponse.json();
-  } catch (err: any) {
-    return res.status(500).json({ error: err?.message || 'Failed to reach OpenAI' });
+    const reply = await chatCompletion(
+      [{ role: 'system', content: instructions }, ...sanitizedMessages],
+      { maxTokens: getMaxOutputTokens() },
+    );
+    return res.status(200).json({ reply });
+  } catch (err) {
+    return sendAlbertError(res, err);
   }
-
-  if (!openaiResponse.ok) {
-    return res.status(openaiResponse.status).json({
-      error: data.error?.message || 'OpenAI request failed',
-    });
-  }
-
-  const reply = extractOutputText(data);
-  if (!reply) {
-    const details = data.status === 'incomplete' && data.incomplete_details?.reason
-      ? ` (${data.incomplete_details.reason})`
-      : '';
-    return res.status(502).json({
-      error: `OpenAI a renvoyé une réponse vide${details}. Augmentez OPENAI_MAX_OUTPUT_TOKENS si cela se reproduit.`,
-    });
-  }
-
-  return res.status(200).json({ reply });
 }

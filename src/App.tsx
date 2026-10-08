@@ -222,7 +222,7 @@ export default function App() {
       setCurrentView('editor'); setAnalysisSuggestions({}); setLastAiSnapshot(null); setIsImportDialogOpen(false);
       setStatusMessage(`Projet « ${imported.title} » reconstruit. Pensez à le sauvegarder.`);
     } catch (err) {
-      console.error(err); setStatusMessage("L'import a échoué. Vérifiez OPENAI_API_KEY dans Vercel ou .env.local.");
+      console.error(err); setStatusMessage("L'import a échoué. Vérifiez ALBERT_API_KEY dans Vercel ou .env.local.");
     } finally { setIsImportLoading(false); }
   };
 
@@ -298,9 +298,11 @@ export default function App() {
         screenplay: `Transforme le traitement en extrait de scénario professionnel français: intitulés INT./EXT., action au présent, dialogues lisibles. Réponds uniquement avec le scénario.\n\n${ctx}`,
       };
 
-      const res = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: prompts[stepId] }) });
+      const res = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: stepId === 'board' ? prompts[stepId] : `${prompts[stepId]}
+
+Le texte sera collé dans un éditeur de texte brut : n'utilise aucune mise en forme Markdown (pas de #, **, *, listes à puces).` }) });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'OpenAI request failed');
+      if (!res.ok) throw new Error(data.error || 'Albert request failed');
       const newText = typeof data.text === 'string' ? data.text.trim() : '';
       if (!newText) { setStatusMessage("L'IA n'a pas renvoyé de contenu exploitable."); return; }
 
@@ -318,7 +320,7 @@ export default function App() {
       }
       setStatusMessage('Proposition IA intégrée. Vous pouvez annuler cette génération si besoin.');
     } catch (err) {
-      console.error(err); setStatusMessage("La génération IA a échoué. Vérifiez OPENAI_API_KEY dans Vercel ou .env.local.");
+      console.error(err); setStatusMessage("La génération IA a échoué. Vérifiez ALBERT_API_KEY dans Vercel ou .env.local.");
     } finally { setIsAiLoading(false); }
   };
 
@@ -333,13 +335,13 @@ export default function App() {
 
       const res = await fetch('/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'OpenAI request failed');
+      if (!res.ok) throw new Error(data.error || 'Albert request failed');
       const newText = typeof data.text === 'string' ? data.text.trim() : '';
       if (!newText) { setStatusMessage("L'IA n'a pas renvoyé de pistes exploitables."); return; }
       setAnalysisSuggestions((prev) => ({ ...prev, [stepId]: newText }));
       setStatusMessage("Pistes d'amélioration prêtes.");
     } catch (err) {
-      console.error(err); setStatusMessage("L'analyse IA a échoué. Vérifiez OPENAI_API_KEY dans Vercel ou .env.local.");
+      console.error(err); setStatusMessage("L'analyse IA a échoué. Vérifiez ALBERT_API_KEY dans Vercel ou .env.local.");
     } finally { setIsAnalysisLoading(false); }
   };
 

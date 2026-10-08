@@ -5,7 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 
-export const EMBED_DIM = 1536; // text-embedding-3-small
+export const EMBED_DIM = 1024; // bge-m3 (Albert)
 
 const CORPUS_DIR      = path.join(process.cwd(), 'data', 'corpus');
 const CHUNKS_FILE     = path.join(CORPUS_DIR, 'chunks.json');

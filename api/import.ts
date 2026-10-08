@@ -1,24 +1,6 @@
 
 import { DRAMATURGICAL_REFERENCES, SCENE_TYPES_LIST } from './_dramaturgical-system.js';
-
-const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
-
-function extractOutputText(response: any): string {
-  if (typeof response.output_text === 'string') {
-    return response.output_text;
-  }
-
-  const chunks: string[] = [];
-  for (const item of response.output ?? []) {
-    for (const content of item.content ?? []) {
-      if (typeof content.text === 'string') {
-        chunks.push(content.text);
-      }
-    }
-  }
-
-  return chunks.join('\n').trim();
-}
+import { chatCompletion, getAlbertApiKey, sendAlbertError } from './_albert.js';
 
 const TYPE_LABELS: Record<string, string> = {
   scenario: 'un scénario (format professionnel)',
@@ -60,9 +42,10 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY is not configured' });
+  try {
+    getAlbertApiKey();
+  } catch (err) {
+    return sendAlbertError(res, err);
   }
 
   const { documentType, content, title } = req.body ?? {};
@@ -119,26 +102,13 @@ Document à analyser :
 ${content.slice(0, 14000)}
 ---`;
 
-  const openaiResponse = await fetch(OPENAI_RESPONSES_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || 'gpt-5',
-      input: prompt,
-    }),
-  });
-
-  const data = await openaiResponse.json();
-  if (!openaiResponse.ok) {
-    return res.status(openaiResponse.status).json({
-      error: data.error?.message || 'OpenAI request failed',
-    });
+  let rawText: string;
+  try {
+    rawText = await chatCompletion([{ role: 'user', content: prompt }], { maxTokens: 16000 });
+  } catch (err) {
+    return sendAlbertError(res, err);
   }
 
-  const rawText = extractOutputText(data);
   const jsonText = rawText
     .replace(/^```json\s*/i, '')
     .replace(/^```\s*/i, '')

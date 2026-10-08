@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { ChatMessage } from '../types';
+import { Markdown } from './Markdown';
 
 export function ChatPanel({
   open, messages, isLoading, onClose, onSend, onClear,
@@ -97,12 +98,12 @@ export function ChatPanel({
                     {msg.role === 'user' ? 'Vous' : 'Script Doctor'}
                   </span>
                   <div className={cn(
-                    'max-w-[85%] rounded px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap',
+                    'max-w-[85%] rounded px-3.5 py-2.5 text-sm leading-relaxed',
                     msg.role === 'user'
-                      ? 'bg-[#222831] text-white'
+                      ? 'bg-[#222831] text-white whitespace-pre-wrap'
                       : 'border border-[#393E46]/20 bg-[#EEEEEE] text-[#222831]',
                   )}>
-                    {msg.content}
+                    {msg.role === 'user' ? msg.content : <Markdown>{msg.content}</Markdown>}
                   </div>
                 </div>
               ))}

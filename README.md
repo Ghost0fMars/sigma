@@ -2,7 +2,7 @@
 
 **Système Intelligent Génératif et Méthodique Assisté**
 
-Assistant d'écriture de scénario qui accompagne l'auteur du synopsis au scénario complet, étape par étape, avec une assistance IA à chaque palier. Construit avec React, Vite, TypeScript et OpenAI.
+Assistant d'écriture de scénario qui accompagne l'auteur du synopsis au scénario complet, étape par étape, avec une assistance IA à chaque palier. Construit avec React, Vite, TypeScript et l'API Albert (DINUM).
 
 > 🧪 **Bêta.** SIGMA est en cours de développement. Des aspérités sont attendues — les retours sont bienvenus.
 
@@ -42,7 +42,7 @@ L'ambition de SIGMA est de mettre ce modèle au travail sur le terrain scénaris
 
 - **React** + **Vite** + **TypeScript**
 - **shadcn/ui** (composants)
-- **OpenAI** via une fonction serverless Vercel (`/api/generate`)
+- **Albert** (API IA de l'État, compatible OpenAI) via des fonctions serverless Vercel (`/api/generate`, `/api/chat`, `/api/import`)
 - **Stockage 100 % local** — projets dans le navigateur (`localStorage`), corpus RAG dans `data/corpus/`
 - **Vercel** — hébergement et fonctions serverless
 - **PWA** — installation et mode hors-ligne partiel
@@ -62,12 +62,13 @@ npm install
 2. Créez un fichier `.env.local` à la racine (ignoré par git, à ne **jamais** committer) :
 
 ```env
-# Clé OpenAI — reste côté serveur (fonction Vercel /api/generate), non exposée au navigateur
-OPENAI_API_KEY=votre_cle_openai
-OPENAI_MODEL=gpt-5
+# Clé Albert — reste côté serveur (fonctions Vercel /api/*), non exposée au navigateur
+ALBERT_API_KEY=votre_cle_albert
+ALBERT_MODEL=mistral-small-3-2-24b-instruct-2506
+# Optionnels : ALBERT_BASE_URL, ALBERT_EMBED_MODEL (défaut bge-m3), ALBERT_MAX_OUTPUT_TOKENS
 ```
 
-> 🔐 La clé OpenAI **ne doit pas** porter le préfixe `VITE_` : seules les variables `VITE_*` sont injectées dans le bundle client. La garder sans préfixe la maintient côté serveur.
+> 🔐 La clé Albert **ne doit pas** porter le préfixe `VITE_` : seules les variables `VITE_*` sont injectées dans le bundle client. La garder sans préfixe la maintient côté serveur.
 
 3. Lancez l'application :
 
@@ -92,7 +93,7 @@ Alternative : double-cliquez sur `start-auteur.cmd`, puis ouvrez [http://localho
 Il n'y a ni compte ni base distante : l'application s'ouvre directement sur l'éditeur.
 
 - **Projets d'écriture** — sauvegardés dans le navigateur (`localStorage`). Ils restent sur cet appareil et ce navigateur : vider les données du site les efface. Utilisez **Exporter** pour en garder une copie.
-- **Corpus narratologique (RAG du Script Doctor)** — stocké dans `data/corpus/` (`chunks.json` pour les textes, `embeddings.f32` pour les vecteurs). La recherche par similarité se fait en mémoire dans `api/_corpus.ts`. Pour reconstruire le corpus depuis les fichiers `.txt` : `npm run index-corpus` (variable `CORPUS_PATH`, nécessite `OPENAI_API_KEY`).
+- **Corpus narratologique (RAG du Script Doctor)** — stocké dans `data/corpus/` (`chunks.json` pour les textes, `embeddings.f32` pour les vecteurs). La recherche par similarité se fait en mémoire dans `api/_corpus.ts`. Pour reconstruire le corpus depuis les fichiers `.txt` : `npm run index-corpus` (variable `CORPUS_PATH`, nécessite `ALBERT_API_KEY` ; sans `CORPUS_PATH` valide, les chunks existants sont ré-encodés avec `bge-m3`).
 
 ---
 
@@ -105,9 +106,9 @@ Réglages recommandés :
 - **Output Directory** : `dist`
 - **Install Command** : `npm install`
 
-Variables d'environnement à ajouter dans Vercel : `OPENAI_API_KEY`, `OPENAI_MODEL` (optionnel, défaut `gpt-5`).
+Variables d'environnement à ajouter dans Vercel : `ALBERT_API_KEY`, `ALBERT_MODEL` (optionnel, défaut `mistral-small-3-2-24b-instruct-2506`).
 
-La clé OpenAI reste côté serveur via la fonction `/api/generate` ; elle n'est pas injectée dans le navigateur. Les fonctions IA nécessitent une connexion internet.
+La clé Albert reste côté serveur via la fonction `/api/generate` ; elle n'est pas injectée dans le navigateur. Les fonctions IA nécessitent une connexion internet.
 
 ---
 
@@ -134,7 +135,7 @@ npm run clean    # supprime le dossier dist
 
 ## Données & confidentialité
 
-SIGMA manipule deux types de données : vos **projets d'écriture** (stockés uniquement dans votre navigateur) et le corpus narratologique livré avec l'application. Aucun compte n'est requis. Aucune donnée tierce sensible n'est traitée. Les textes envoyés à l'IA transitent par l'API OpenAI le temps de la génération.
+SIGMA manipule deux types de données : vos **projets d'écriture** (stockés uniquement dans votre navigateur) et le corpus narratologique livré avec l'application. Aucun compte n'est requis. Aucune donnée tierce sensible n'est traitée. Les textes envoyés à l'IA transitent par l'API Albert le temps de la génération.
 
 ---
 

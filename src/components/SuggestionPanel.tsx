@@ -1,5 +1,6 @@
 import { Lightbulb } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { Markdown } from './Markdown';
 
 export function SuggestionPanel({ text }: { text: string }) {
   return (
@@ -8,7 +9,7 @@ export function SuggestionPanel({ text }: { text: string }) {
         <Lightbulb size={14} />
         Pistes d'amélioration
       </div>
-      <div className="whitespace-pre-wrap text-sm leading-relaxed text-[#222831]">{text}</div>
+      <Markdown className="text-sm leading-relaxed text-[#222831]">{text}</Markdown>
     </Card>
   );
 }

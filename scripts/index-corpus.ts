@@ -5,25 +5,28 @@
  * Écrit le résultat dans data/corpus/ (voir api/_corpus.ts).
  *
  * Variables requises dans .env.local :
- *   OPENAI_API_KEY
+ *   ALBERT_API_KEY
  *   CORPUS_PATH  (optionnel, défaut ci-dessous)
+ *
+ * Si CORPUS_PATH n'existe pas, les textes déjà présents dans data/corpus/chunks.json
+ * sont ré-encodés (utile après un changement de modèle d'embedding).
  */
 
 import fs from 'fs';
 import path from 'path';
 import { config } from 'dotenv';
 import { writeCorpus, type CorpusChunk } from '../api/_corpus.js';
+import { embed } from '../api/_albert.js';
 
 config({ path: '.env.local' });
 
-const OPENAI_API_KEY       = process.env.OPENAI_API_KEY!;
+const ALBERT_API_KEY       = process.env.ALBERT_API_KEY!;
 const CORPUS_PATH          = process.env.CORPUS_PATH
   || 'C:/Users/etien/Documents/SocrateCorpus/Narratologie';
 
 const CHUNK_SIZE    = 1200; // caractères
 const CHUNK_OVERLAP = 200;
 const EMBED_BATCH   = 50;   // chunks par requête d'embedding
-const EMBED_MODEL   = 'text-embedding-3-small';
 
 // ---------- Métadonnées par fichier ----------
 function parseMeta(filename: string): { author: string; title: string } {
@@ -68,31 +71,42 @@ function chunkText(text: string): string[] {
   return chunks;
 }
 
-// ---------- Embeddings OpenAI ----------
+// ---------- Embeddings Albert ----------
 async function embedBatch(texts: string[]): Promise<number[][]> {
-  const res = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ model: EMBED_MODEL, input: texts }),
-  });
+  return embed(texts);
+}
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`OpenAI embeddings error: ${err}`);
+// ---------- Ré-encodage du corpus existant ----------
+async function reembedExisting() {
+  const chunksFile = path.join(process.cwd(), 'data', 'corpus', 'chunks.json');
+  const chunks = JSON.parse(fs.readFileSync(chunksFile, 'utf-8')) as CorpusChunk[];
+  console.log(`
+${CORPUS_PATH} introuvable : ré-encodage des ${chunks.length} chunks existants
+`);
+
+  const embeddings: number[][] = [];
+  for (let i = 0; i < chunks.length; i += EMBED_BATCH) {
+    const batch = chunks.slice(i, i + EMBED_BATCH).map(c => c.content);
+    embeddings.push(...await embedBatch(batch));
+    process.stdout.write(`  ${i + batch.length}/${chunks.length} chunks encodés
+`);
   }
 
-  const data = await res.json() as { data: { index: number; embedding: number[] }[] };
-  return data.data.sort((a, b) => a.index - b.index).map(d => d.embedding);
+  writeCorpus(chunks, embeddings);
+  console.log(`
+Ré-encodage terminé : ${chunks.length} chunks écrits dans data/corpus/.`);
 }
 
 // ---------- Main ----------
 async function main() {
-  if (!OPENAI_API_KEY) {
-    console.error('Variable manquante : OPENAI_API_KEY');
+  if (!ALBERT_API_KEY) {
+    console.error('Variable manquante : ALBERT_API_KEY');
     process.exit(1);
+  }
+
+  if (!fs.existsSync(CORPUS_PATH)) {
+    await reembedExisting();
+    return;
   }
 
   const files = fs.readdirSync(CORPUS_PATH).filter(f => f.endsWith('.txt'));

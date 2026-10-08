@@ -1,5 +1,6 @@
 
 import { DRAMATURGICAL_REFERENCES } from './_dramaturgical-system.js';
+import { loadCorpus, searchCorpus } from './_corpus.js';
 
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 const OPENAI_EMBED_URL  = 'https://api.openai.com/v1/embeddings';
@@ -64,9 +65,7 @@ function getMaxOutputTokens(): number {
 
 // ---------- RAG : récupère les passages du corpus les plus proches de la requête ----------
 async function retrieveCorpusChunks(query: string, apiKey: string): Promise<string> {
-  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !supabaseKey) return '';
+  if (!loadCorpus()) return '';
 
   try {
     // 1. Embed la requête
@@ -79,19 +78,9 @@ async function retrieveCorpusChunks(query: string, apiKey: string): Promise<stri
     const embedData = await embedRes.json() as { data: { embedding: number[] }[] };
     const embedding = embedData.data[0].embedding;
 
-    // 2. Recherche vectorielle dans Supabase
-    const searchRes = await fetch(`${supabaseUrl}/rest/v1/rpc/search_narratology`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${supabaseKey}`,
-        apikey: supabaseKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query_embedding: embedding, match_count: 5, min_similarity: 0.5 }),
-    });
-    if (!searchRes.ok) return '';
-    const chunks = await searchRes.json() as { author: string; title: string; content: string }[];
-    if (!Array.isArray(chunks) || chunks.length === 0) return '';
+    // 2. Recherche vectorielle dans le corpus local
+    const chunks = searchCorpus(embedding, 5, 0.5);
+    if (chunks.length === 0) return '';
 
     // 3. Formate les passages récupérés
     const formatted = chunks

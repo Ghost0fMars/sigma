@@ -10,7 +10,7 @@
 - **public/**
 - **scripts/**
 - **src/**
-- **supabase/**
+- **data/**
 
 ## Fichiers
 

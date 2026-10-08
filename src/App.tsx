@@ -9,7 +9,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react';
 import {
   BookOpen, Clapperboard, Download, Edit3, FileText,
-  FolderOpen, Info, LayoutDashboard, Library, LogOut,
+  FolderOpen, Info, LayoutDashboard, Library,
   Menu, MessageSquare, Save, X,
 } from 'lucide-react';
 
@@ -19,8 +19,7 @@ import { Input }    from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { cn }       from '@/lib/utils';
 
-import { Project, Scene, SceneType, Step, AccessStatus, AppView, ChatMessage, SavedProject, SyncStatus } from './types';
-import { supabase }             from './supabaseClient';
+import { Project, Scene, SceneType, Step, AppView, ChatMessage, SavedProject } from './types';
 
 // ── Lazy-loaded heavy panels ─────────────────────────────────────────────────
 const NarratologyPanel     = lazy(() => import('./NarratologyPanel').then((m) => ({ default: m.NarratologyPanel })));
@@ -38,7 +37,6 @@ import {
 import { Metric }             from './components/Metric';
 import { StepContent }        from './components/StepContent';
 import { FullScreenNotice }   from './components/FullScreenNotice';
-import { PendingApprovalPage} from './components/PendingApprovalPage';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -63,16 +61,36 @@ function normalizeSavedProjects(value: unknown): SavedProject[] {
       title:      typeof item.title     === 'string' && item.title.trim() ? item.title : 'Sans titre',
       updatedAt:  typeof item.updatedAt === 'string' ? item.updatedAt : new Date().toISOString(),
       project:    normalizeProject(item.project),
-      // Statut inconnu tant qu'une synchronisation réussie n'est pas confirmée par Supabase.
-      syncStatus: item.syncStatus === 'synced' ? 'synced' as const : 'local-only' as const,
     }));
 }
 
-// Identifiant utilisé quand personne n'est connecté : l'app démarre directement en mode local.
-const LOCAL_USER_ID = 'local';
+function readSavedProjects(key: string): SavedProject[] {
+  try { return normalizeSavedProjects(JSON.parse(localStorage.getItem(key) || '[]')); }
+  catch { return []; }
+}
 
-function getUserStorageKey(key: string, userId: string) {
-  return `${key}:${userId}`;
+// Avant le passage en 100 % local, les données étaient rangées par utilisateur
+// (`sigma_projects:<userId>`…). On les regroupe une fois sous les clés sans suffixe.
+function migrateUserScopedStorage() {
+  const scopedKeys = Object.keys(localStorage).filter((k) =>
+    [PROJECTS_KEY, CURRENT_PROJECT_ID_KEY, STORAGE_KEY].some((base) => k.startsWith(`${base}:`)));
+  if (scopedKeys.length === 0) return;
+
+  const merged = new Map<string, SavedProject>();
+  const projectKeys = [PROJECTS_KEY, ...scopedKeys.filter((k) => k.startsWith(`${PROJECTS_KEY}:`))];
+  for (const sp of projectKeys.flatMap(readSavedProjects)) {
+    const existing = merged.get(sp.id);
+    if (!existing || existing.updatedAt < sp.updatedAt) merged.set(sp.id, sp);
+  }
+  const projects = [...merged.values()]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+
+  for (const base of [CURRENT_PROJECT_ID_KEY, STORAGE_KEY]) {
+    const scoped = scopedKeys.find((k) => k.startsWith(`${base}:`));
+    if (scoped && localStorage.getItem(base) === null) localStorage.setItem(base, localStorage.getItem(scoped)!);
+  }
+  scopedKeys.forEach((k) => localStorage.removeItem(k));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,12 +100,6 @@ export default function App() {
   const [savedProjects, setSavedProjects]   = useState<SavedProject[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentView, setCurrentView]       = useState<AppView>('editor');
-  const [userId, setUserId]                 = useState<string | null>(null);
-  const [userEmail, setUserEmail]           = useState('');
-  const [accessStatus, setAccessStatus]     = useState<AccessStatus>('checking');
-  const [accessMessage, setAccessMessage]   = useState('');
-  const [approvalRefreshKey, setApprovalRefreshKey] = useState(0);
-  const [isAuthReady, setIsAuthReady]       = useState(false);
   const [currentStep, setCurrentStep]       = useState<Step>('synopsis');
   const [isLoaded, setIsLoaded]             = useState(false);
   const [editingScene, setEditingScene]     = useState<Scene | null>(null);
@@ -103,149 +115,30 @@ export default function App() {
   const [isChatLoading, setIsChatLoading]   = useState(false);
   const [lastAiSnapshot, setLastAiSnapshot] = useState<{ stepId: Step; scenes?: Scene[]; text?: string } | null>(null);
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const startLocal = () => {
-      setUserId(LOCAL_USER_ID);
-      setUserEmail('');
-      setAccessStatus('approved');
-      setIsAuthReady(true);
-    };
-
-    if (!supabase) { startLocal(); return; }
-
-    supabase.auth.getSession().then(({ data }) => {
-      const user = data.session?.user ?? null;
-      if (!user) { startLocal(); return; }
-      setUserId(user.id);
-      setUserEmail(user.email ?? '');
-      setAccessStatus('checking');
-      setIsAuthReady(true);
-    }).catch(startLocal);
-
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'TOKEN_REFRESHED') return;
-      const user = session?.user ?? null;
-      const nextId = user?.id ?? LOCAL_USER_ID;
-      setUserId((prevId) => {
-        if (prevId === nextId) return prevId;
-        setUserEmail(user?.email ?? '');
-        setAccessStatus(user ? 'checking' : 'approved');
-        setAccessMessage('');
-        setProject(DEFAULT_PROJECT);
-        setSavedProjects([]);
-        setCurrentProjectId(null);
-        setCurrentView('editor');
-        setIsLoaded(false);
-        return nextId;
-      });
-    });
-
-    return () => listener.subscription.unsubscribe();
-  }, []);
-
-  // ── Access check ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!isAuthReady || !userId || userId === LOCAL_USER_ID || !supabase) return;
-    let cancelled = false;
-
-    (async () => {
-      setAccessStatus('checking');
-      setAccessMessage('');
-      const { data, error } = await supabase.from('user_access').select('status').eq('user_id', userId).maybeSingle();
-      if (cancelled) return;
-
-      if (error) {
-        setAccessStatus('error');
-        setAccessMessage("Impossible de vérifier l'approbation du compte. Exécutez d'abord le SQL dans Supabase.");
-        return;
-      }
-      if (!data) {
-        const { error: insertError } = await supabase.from('user_access').insert({ user_id: userId, email: userEmail, status: 'pending' });
-        if (cancelled) return;
-        if (insertError && insertError.code !== '23505') {
-          setAccessStatus('error');
-          setAccessMessage("Impossible de créer la demande d'accès. Vérifiez les règles RLS de la table user_access.");
-          return;
-        }
-        setAccessStatus('pending');
-        return;
-      }
-      setAccessStatus(data.status === 'approved' ? 'approved' : 'pending');
-    })();
-
-    return () => { cancelled = true; };
-  }, [approvalRefreshKey, isAuthReady, userEmail, userId]);
-
   // ── Load projects ─────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!isAuthReady || !userId || accessStatus !== 'approved') return;
+    try { migrateUserScopedStorage(); } catch { /* les anciennes clés restent lisibles au prochain démarrage */ }
 
-    const projectsKey  = getUserStorageKey(PROJECTS_KEY, userId);
-    const currentIdKey = getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId);
-    const legacyKey    = getUserStorageKey(STORAGE_KEY, userId);
-
-    const applyProjects = (loaded: SavedProject[]) => {
-      const storedId  = localStorage.getItem(currentIdKey);
-      const selected  = loaded.find((p) => p.id === storedId) ?? loaded[0];
-      if (selected) {
-        setProject(selected.project);
-        setCurrentProjectId(selected.id);
-        setCurrentView('projects');
-      } else {
-        try {
-          const leg = localStorage.getItem(legacyKey);
-          setProject(leg ? normalizeProject(JSON.parse(leg)) : DEFAULT_PROJECT);
-        } catch { setProject(DEFAULT_PROJECT); }
-        setCurrentProjectId(null);
-        setCurrentView('editor');
-      }
-      setSavedProjects(loaded);
-      setIsLoaded(true);
-    };
-
-    const loadLocal = () => {
+    const loaded   = readSavedProjects(PROJECTS_KEY);
+    const storedId = localStorage.getItem(CURRENT_PROJECT_ID_KEY);
+    const selected = loaded.find((p) => p.id === storedId) ?? loaded[0];
+    if (selected) {
+      setProject(selected.project);
+      setCurrentProjectId(selected.id);
+      setCurrentView('projects');
+    } else {
       try {
-        applyProjects(normalizeSavedProjects(JSON.parse(localStorage.getItem(projectsKey) || '[]')));
-      } catch { setStatusMessage('Impossible de relire la liste des projets.'); applyProjects([]); }
-    };
-
-    if (!supabase || userId === LOCAL_USER_ID) { loadLocal(); return; }
-
-    supabase.from('projects').select('id, title, updated_at, data').eq('user_id', userId).order('updated_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (error) { loadLocal(); return; }
-        if (!data || data.length === 0) {
-          const local = normalizeSavedProjects(JSON.parse(localStorage.getItem(projectsKey) || '[]'));
-          if (local.length > 0) {
-            supabase.from('projects').upsert(local.map((sp) => ({
-              id: sp.id, user_id: userId, title: sp.title, updated_at: sp.updatedAt, data: sp.project,
-            }))).then(({ error: e }) => { if (e) console.error('Migration failed', e); });
-          }
-          applyProjects(local);
-          return;
-        }
-        const remote: SavedProject[] = data.map((row) => ({
-          id: row.id, title: row.title, updatedAt: row.updated_at, project: normalizeProject(row.data), syncStatus: 'synced',
-        }));
-        // Les projets encore "local-only" (jamais confirmés par Supabase) n'existent pas côté
-        // serveur : les exclure ici les ferait disparaître silencieusement de la liste au moindre
-        // rechargement. On les conserve donc en les fusionnant avec la liste distante.
-        const remoteIds = new Set(remote.map((p) => p.id));
-        const localOnly = normalizeSavedProjects(JSON.parse(localStorage.getItem(projectsKey) || '[]'))
-          .filter((sp) => sp.syncStatus !== 'synced' && !remoteIds.has(sp.id));
-        const loaded = [...remote, ...localOnly]
-          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-        localStorage.setItem(projectsKey, JSON.stringify(loaded));
-        applyProjects(loaded);
-      });
-  }, [accessStatus, isAuthReady, userId]);
+        const draft = localStorage.getItem(STORAGE_KEY);
+        setProject(draft ? normalizeProject(JSON.parse(draft)) : DEFAULT_PROJECT);
+      } catch { setProject(DEFAULT_PROJECT); }
+    }
+    setSavedProjects(loaded);
+    setIsLoaded(true);
+  }, []);
 
   useEffect(() => {
-    if (isLoaded && userId && accessStatus === 'approved') {
-      localStorage.setItem(getUserStorageKey(STORAGE_KEY, userId), JSON.stringify(project));
-    }
-  }, [accessStatus, project, isLoaded, userId]);
+    if (isLoaded) localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
+  }, [project, isLoaded]);
 
   // ── Derived stats ─────────────────────────────────────────────────────────
   const progress = useMemo(() => {
@@ -271,61 +164,27 @@ export default function App() {
   const updateProject = (updates: Partial<Project>) => setProject((prev) => ({ ...prev, ...updates }));
 
   const persistSavedProjects = (projects: SavedProject[]) => {
-    if (!userId) return;
     setSavedProjects(projects);
-    localStorage.setItem(getUserStorageKey(PROJECTS_KEY, userId), JSON.stringify(projects));
-  };
-
-  const updateSavedProjectSyncStatus = (id: string, syncStatus: SyncStatus) => {
-    if (!userId) return;
-    setSavedProjects((prev) => {
-      const next = prev.map((p) => (p.id === id ? { ...p, syncStatus } : p));
-      localStorage.setItem(getUserStorageKey(PROJECTS_KEY, userId), JSON.stringify(next));
-      return next;
-    });
+    localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
   };
 
   const saveCurrentProject = () => {
-    if (!userId) return;
     const id    = currentProjectId ?? crypto.randomUUID();
     const now   = new Date().toISOString();
     const title = project.title.trim() || 'Sans titre';
-    const saved: SavedProject = { id, title, updatedAt: now, project: { ...project, title }, syncStatus: 'local-only' };
+    const saved: SavedProject = { id, title, updatedAt: now, project: { ...project, title } };
     const next  = [saved, ...savedProjects.filter((p) => p.id !== id)];
     setProject(saved.project);
     setCurrentProjectId(id);
     persistSavedProjects(next);
-    localStorage.setItem(getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId), id);
-    if (supabase && userId !== LOCAL_USER_ID) {
-      supabase.from('projects').upsert({ id, user_id: userId, title, updated_at: now, data: saved.project })
-        .then(({ error }) => {
-          setStatusMessage(error ? 'Sauvegardé localement uniquement — synchronisation Supabase échouée.' : 'Projet sauvegardé et synchronisé.');
-          updateSavedProjectSyncStatus(id, error ? 'local-only' : 'synced');
-        });
-    } else { setStatusMessage('Projet sauvegardé localement.'); }
+    localStorage.setItem(CURRENT_PROJECT_ID_KEY, id);
+    setStatusMessage('Projet sauvegardé localement.');
   };
 
-  // Retente une fois par session la synchronisation des projets restés "local-only"
-  // (ex. échec réseau lors d'une sauvegarde précédente), pour ne pas dépendre uniquement
-  // d'une nouvelle sauvegarde manuelle.
-  useEffect(() => {
-    if (!isLoaded || !userId || userId === LOCAL_USER_ID || !supabase || accessStatus !== 'approved') return;
-    const unsynced = savedProjects.filter((p) => p.syncStatus !== 'synced');
-    if (unsynced.length === 0) return;
-    unsynced.forEach((sp) => {
-      supabase.from('projects')
-        .upsert({ id: sp.id, user_id: userId, title: sp.title, updated_at: sp.updatedAt, data: sp.project })
-        .then(({ error }) => { if (!error) updateSavedProjectSyncStatus(sp.id, 'synced'); });
-    });
-    // Ne s'exécute qu'au chargement initial des projets, pas à chaque changement de savedProjects.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, userId, accessStatus]);
-
   const openSavedProject = (sp: SavedProject) => {
-    if (!userId) return;
     setProject(sp.project); setCurrentProjectId(sp.id); setCurrentStep('synopsis');
     setCurrentView('editor'); setAnalysisSuggestions({}); setLastAiSnapshot(null);
-    localStorage.setItem(getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId), sp.id);
+    localStorage.setItem(CURRENT_PROJECT_ID_KEY, sp.id);
     setStatusMessage('Projet ouvert.');
   };
 
@@ -395,15 +254,9 @@ export default function App() {
     if (currentProjectId === id) {
       setCurrentProjectId(null);
       setProject(next[0]?.project ?? DEFAULT_PROJECT);
-      if (userId) {
-        next[0]
-          ? localStorage.setItem(getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId), next[0].id)
-          : localStorage.removeItem(getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId));
-      }
-    }
-    if (supabase && userId && userId !== LOCAL_USER_ID) {
-      supabase.from('projects').delete().eq('id', id).eq('user_id', userId)
-        .then(({ error }) => { if (error) console.error('Delete failed', error); });
+      next[0]
+        ? localStorage.setItem(CURRENT_PROJECT_ID_KEY, next[0].id)
+        : localStorage.removeItem(CURRENT_PROJECT_ID_KEY);
     }
     setStatusMessage('Projet supprimé.');
   };
@@ -495,7 +348,7 @@ export default function App() {
   const saveScene   = (scene: Scene) => { updateProject({ scenes: project.scenes.map((s) => (s.id === scene.id ? scene : s)) }); setEditingScene(null); };
   const reorderScenes = (next: Scene[]) => updateProject({ scenes: next.map((s, i) => ({ ...s, order: i })) });
 
-  const resetProject  = () => { if (!window.confirm('Effacer ce projet localement ?')) return; if (userId) localStorage.removeItem(`${STORAGE_KEY}:${userId}`); setProject(DEFAULT_PROJECT); setStatusMessage('Projet réinitialisé.'); };
+  const resetProject  = () => { if (!window.confirm('Effacer ce projet localement ?')) return; localStorage.removeItem(STORAGE_KEY); setProject(DEFAULT_PROJECT); setStatusMessage('Projet réinitialisé.'); };
   const undoLastAiAssist = () => {
     if (!lastAiSnapshot) return;
     if (lastAiSnapshot.stepId === 'board') { updateProject({ scenes: lastAiSnapshot.scenes ?? [] }); }
@@ -504,8 +357,6 @@ export default function App() {
     setLastAiSnapshot(null);
   };
   const exportProject = () => { const slug = (project.title || 'sigma').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''); downloadText(`${slug || 'sigma'}.md`, asMarkdown(project)); setStatusMessage('Export Markdown téléchargé.'); };
-  const signOut       = async () => { setAccessStatus('pending'); setAccessMessage(''); await supabase?.auth.signOut(); };
-  const refreshApproval = () => setApprovalRefreshKey((v) => v + 1);
 
   const navigate = (view: AppView, step?: Step) => {
     setCurrentView(view);
@@ -514,17 +365,7 @@ export default function App() {
   };
 
   // ── Guards ────────────────────────────────────────────────────────────────
-  if (!isAuthReady) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0a0a0a' }}>
-        <div style={{ width: 32, height: 32, border: '3px solid #333', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
-  }
-  if (accessStatus === 'checking') return <FullScreenNotice title="Vérification du compte" message="Nous vérifions votre statut d'approbation." />;
-  if (accessStatus !== 'approved') return <PendingApprovalPage email={userEmail} message={accessMessage} isError={accessStatus === 'error'} onRefresh={refreshApproval} onSignOut={signOut} />;
-  if (!isLoaded)                 return <FullScreenNotice title="Chargement de Sigma" message="Votre espace d'écriture se prépare." />;
+  if (!isLoaded) return <FullScreenNotice title="Chargement de Sigma" message="Votre espace d'écriture se prépare." />;
 
   // ── Sidebar nav items ─────────────────────────────────────────────────────
   const NavItems = ({ mobile = false }: { mobile?: boolean }) => (
@@ -559,7 +400,6 @@ export default function App() {
 
   const SidebarFooter = ({ mobile = false }: { mobile?: boolean }) => (
     <div className="space-y-1.5 border-t border-[#393E46] p-3">
-      <span className="block truncate px-1 text-[10px] text-[#393E46]">{userEmail}</span>
       <Button variant="outline" size="sm"
         className={cn('w-full justify-start border-[#393E46] text-xs uppercase tracking-widest', isChatOpen && 'border-[#FFD369] bg-[#FFD369] text-black hover:bg-[#FFD369]/90')}
         onClick={() => { setIsChatOpen((v) => !v); if (mobile) setIsMobileNavOpen(false); }}>
@@ -573,15 +413,8 @@ export default function App() {
         onClick={() => { exportProject(); if (mobile) setIsMobileNavOpen(false); }}>
         <Download size={13} className="mr-2" />Exporter
       </Button>
-      <div className="flex items-center gap-1">
-        <Button variant="ghost" size="sm" className="flex-1 justify-start text-xs text-[#222831]/45 hover:text-[#222831]"
-          onClick={() => { resetProject(); if (mobile) setIsMobileNavOpen(false); }}>Effacer</Button>
-        {userId !== LOCAL_USER_ID && (
-          <Button variant="ghost" size="icon-sm" className="text-[#393E46] hover:text-[#222831]" onClick={signOut} title="Se déconnecter">
-            <LogOut size={15} />
-          </Button>
-        )}
-      </div>
+      <Button variant="ghost" size="sm" className="w-full justify-start text-xs text-[#222831]/45 hover:text-[#222831]"
+        onClick={() => { resetProject(); if (mobile) setIsMobileNavOpen(false); }}>Effacer</Button>
     </div>
   );
 
@@ -684,7 +517,7 @@ export default function App() {
                   <NarratologyPanel />
                 ) : currentView === 'projects' ? (
                   <ProjectsPage
-                    projects={savedProjects} currentProjectId={currentProjectId} supabaseEnabled={Boolean(supabase)}
+                    projects={savedProjects} currentProjectId={currentProjectId}
                     onCreateProject={createNewProject} onOpenProject={openSavedProject}
                     onDeleteProject={deleteSavedProject} onImportDocument={() => setIsImportDialogOpen(true)} />
                 ) : (

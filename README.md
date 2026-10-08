@@ -43,7 +43,7 @@ L'ambition de SIGMA est de mettre ce modèle au travail sur le terrain scénaris
 - **React** + **Vite** + **TypeScript**
 - **shadcn/ui** (composants)
 - **OpenAI** via une fonction serverless Vercel (`/api/generate`)
-- **Supabase** — authentification (e-mail) et approbation manuelle des comptes
+- **Stockage 100 % local** — projets dans le navigateur (`localStorage`), corpus RAG dans `data/corpus/`
 - **Vercel** — hébergement et fonctions serverless
 - **PWA** — installation et mode hors-ligne partiel
 
@@ -65,10 +65,6 @@ npm install
 # Clé OpenAI — reste côté serveur (fonction Vercel /api/generate), non exposée au navigateur
 OPENAI_API_KEY=votre_cle_openai
 OPENAI_MODEL=gpt-5
-
-# Supabase — exposées au client via le préfixe VITE_ (la clé anon est publique par conception)
-VITE_SUPABASE_URL=https://votre-projet.supabase.co
-VITE_SUPABASE_ANON_KEY=votre_cle_anon_supabase
 ```
 
 > 🔐 La clé OpenAI **ne doit pas** porter le préfixe `VITE_` : seules les variables `VITE_*` sont injectées dans le bundle client. La garder sans préfixe la maintient côté serveur.
@@ -91,27 +87,12 @@ Alternative : double-cliquez sur `start-auteur.cmd`, puis ouvrez [http://localho
 
 ---
 
-## Configurer Supabase
+## Données locales
 
-1. Créez un projet sur [supabase.com](https://supabase.com).
-2. Dans `Authentication > Providers`, activez `Email`.
-3. Pour un test rapide, vous pouvez désactiver la confirmation e-mail dans `Authentication > Sign In / Providers > Email`.
-4. Copiez `Project URL` et `anon public key` depuis `Project Settings > API`.
-5. Renseignez `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` (en local dans `.env.local`, en production dans Vercel).
+Il n'y a ni compte ni base distante : l'application s'ouvre directement sur l'éditeur.
 
-Les projets d'écriture sont sauvegardés dans le navigateur (`localStorage`), isolés par utilisateur connecté, et synchronisés en best-effort vers une table Supabase `projects` à chaque sauvegarde manuelle. En cas d'échec réseau, le projet reste utilisable localement et une nouvelle tentative de synchronisation est faite automatiquement au chargement suivant de l'application. La page « Mes Projets » affiche un badge **Synchronisé** / **Local uniquement** par projet pour rendre cet état visible — un projet resté « Local uniquement » peut être perdu en cas de changement de navigateur ou de vidage du cache avant sa prochaine synchronisation réussie.
-
-### Approbation manuelle des comptes
-
-SIGMA laisse les utilisateurs créer un compte, mais bloque l'accès à l'application tant que le compte n'est pas approuvé.
-
-1. Dans Supabase, ouvrez `SQL Editor`.
-2. Exécutez le contenu de `supabase/manual-approval.sql`.
-3. Laissez les inscriptions activées dans `Authentication > Providers > Email`.
-4. À chaque inscription, ouvrez `Table Editor > profiles`.
-5. Passez la colonne `approved` de `false` à `true` pour autoriser l'accès.
-
-Tant que `approved` vaut `false`, l'utilisateur voit une page d'attente.
+- **Projets d'écriture** — sauvegardés dans le navigateur (`localStorage`). Ils restent sur cet appareil et ce navigateur : vider les données du site les efface. Utilisez **Exporter** pour en garder une copie.
+- **Corpus narratologique (RAG du Script Doctor)** — stocké dans `data/corpus/` (`chunks.json` pour les textes, `embeddings.f32` pour les vecteurs). La recherche par similarité se fait en mémoire dans `api/_corpus.ts`. Pour reconstruire le corpus depuis les fichiers `.txt` : `npm run index-corpus` (variable `CORPUS_PATH`, nécessite `OPENAI_API_KEY`).
 
 ---
 
@@ -124,9 +105,9 @@ Réglages recommandés :
 - **Output Directory** : `dist`
 - **Install Command** : `npm install`
 
-Variables d'environnement à ajouter dans Vercel : `OPENAI_API_KEY`, `OPENAI_MODEL` (optionnel, défaut `gpt-5`), `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+Variables d'environnement à ajouter dans Vercel : `OPENAI_API_KEY`, `OPENAI_MODEL` (optionnel, défaut `gpt-5`).
 
-La clé OpenAI reste côté serveur via la fonction `/api/generate` ; elle n'est pas injectée dans le navigateur. Les fonctions IA et Supabase nécessitent une connexion internet.
+La clé OpenAI reste côté serveur via la fonction `/api/generate` ; elle n'est pas injectée dans le navigateur. Les fonctions IA nécessitent une connexion internet.
 
 ---
 
@@ -153,7 +134,7 @@ npm run clean    # supprime le dossier dist
 
 ## Données & confidentialité
 
-SIGMA manipule deux types de données : vos **projets d'écriture** (stockés localement dans votre navigateur, et synchronisés en best-effort vers Supabase si l'application est configurée avec des identifiants Supabase — voir « Configurer Supabase » ci-dessus) et, si vous créez un compte, votre **e-mail d'authentification** (géré par Supabase). Aucune donnée tierce sensible n'est traitée. Les textes envoyés à l'IA transitent par l'API OpenAI le temps de la génération.
+SIGMA manipule deux types de données : vos **projets d'écriture** (stockés uniquement dans votre navigateur) et le corpus narratologique livré avec l'application. Aucun compte n'est requis. Aucune donnée tierce sensible n'est traitée. Les textes envoyés à l'IA transitent par l'API OpenAI le temps de la génération.
 
 ---
 
@@ -161,7 +142,6 @@ SIGMA manipule deux types de données : vos **projets d'écriture** (stockés lo
 
 - [ ] **Cartographie de la tension dramatique S(t)** le long du scénario (visualisation de l'Intégrale Dramatique).
 - [ ] Modélisation du **tenseur de contexte C** : friction entre trajectoires des personnages et antagonisme du monde.
-- [x] Synchronisation best-effort des projets vers Supabase (avec badge de statut par projet et retentative automatique au chargement).
 
 ---
 

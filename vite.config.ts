@@ -25,7 +25,6 @@ export default defineConfig(() => {
           manualChunks: {
             'vendor-react':    ['react', 'react-dom'],
             'vendor-motion':   ['motion'],
-            'vendor-supabase': ['@supabase/supabase-js'],
             'vendor-lucide':   ['lucide-react'],
             'vendor-ui': [
               'class-variance-authority',

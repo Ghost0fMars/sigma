@@ -42,8 +42,7 @@ export interface Project {
 
 export type Step = 'synopsis' | 'developedSynopsis' | 'board' | 'treatment' | 'screenplay';
 
-export type AccessStatus = 'checking' | 'pending' | 'approved' | 'error';
-export type AppView      = 'projects' | 'editor' | 'narratology';
+export type AppView = 'projects' | 'editor' | 'narratology';
 
 export type ChatMessage = {
   id: string;
@@ -51,12 +50,9 @@ export type ChatMessage = {
   content: string;
 };
 
-export type SyncStatus = 'synced' | 'local-only';
-
 export type SavedProject = {
   id: string;
   title: string;
   updatedAt: string;
   project: Project;
-  syncStatus: SyncStatus;
 };

@@ -1,14 +1,13 @@
-import { CloudOff, FolderOpen, Plus, Trash2, Upload } from 'lucide-react';
+import { FolderOpen, Plus, Trash2, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
 import { SavedProject } from '../types';
 
 export function ProjectsPage({
-  projects, currentProjectId, supabaseEnabled, onCreateProject, onOpenProject, onDeleteProject, onImportDocument,
+  projects, currentProjectId, onCreateProject, onOpenProject, onDeleteProject, onImportDocument,
 }: {
-  projects: SavedProject[]; currentProjectId: string | null; supabaseEnabled: boolean;
+  projects: SavedProject[]; currentProjectId: string | null;
   onCreateProject: () => void; onOpenProject: (p: SavedProject) => void;
   onDeleteProject: (id: string) => void; onImportDocument: () => void;
 }) {
@@ -53,15 +52,6 @@ export function ProjectsPage({
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   {currentProjectId === sp.id && <Badge className="bg-[#FFD369] text-[#222831]">Ouvert</Badge>}
-                  {supabaseEnabled && (
-                    <Badge className={cn(
-                      'gap-1 text-[10px]',
-                      sp.syncStatus === 'synced' ? 'bg-[#393E46] text-[#FFFFFF]' : 'bg-red-100 text-red-700',
-                    )}>
-                      {sp.syncStatus !== 'synced' && <CloudOff size={10} />}
-                      {sp.syncStatus === 'synced' ? 'Synchronisé' : 'Local uniquement'}
-                    </Badge>
-                  )}
                 </div>
               </div>
               <p className="mt-4 line-clamp-3 text-sm leading-relaxed text-[#393E46]">

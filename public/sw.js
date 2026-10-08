@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sigma-pwa-v1';
+const CACHE_NAME = 'sigma-pwa-v2';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -25,6 +25,11 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  // Modules du serveur de dev Vite : jamais mis en cache.
+  if (/^\/(@vite|@react-refresh|@id|@fs|src|node_modules)\//.test(url.pathname)) {
     return;
   }
 

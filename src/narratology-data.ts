@@ -275,7 +275,7 @@ export const NARRATOLOGY_THEORIES: NarratologyTheory[] = [
   },
   {
     id: 'lavallard',
-    author: 'Étienne Lavallard',
+    author: 'àlaclé',
     work: 'L\'Intégrale Dramatique',
     year: '2024',
     tradition: 'Dramaturgie',

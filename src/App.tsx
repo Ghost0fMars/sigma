@@ -20,7 +20,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn }       from '@/lib/utils';
 
 import { Project, Scene, SceneType, Step, AccessStatus, AppView, ChatMessage, SavedProject, SyncStatus } from './types';
-import { AuthPage }             from './AuthPage';
 import { supabase }             from './supabaseClient';
 
 // ── Lazy-loaded heavy panels ─────────────────────────────────────────────────
@@ -69,6 +68,9 @@ function normalizeSavedProjects(value: unknown): SavedProject[] {
     }));
 }
 
+// Identifiant utilisé quand personne n'est connecté : l'app démarre directement en mode local.
+const LOCAL_USER_ID = 'local';
+
 function getUserStorageKey(key: string, userId: string) {
   return `${key}:${userId}`;
 }
@@ -103,30 +105,39 @@ export default function App() {
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!supabase) { setIsAuthReady(true); return; }
+    const startLocal = () => {
+      setUserId(LOCAL_USER_ID);
+      setUserEmail('');
+      setAccessStatus('approved');
+      setIsAuthReady(true);
+    };
+
+    if (!supabase) { startLocal(); return; }
 
     supabase.auth.getSession().then(({ data }) => {
       const user = data.session?.user ?? null;
-      setUserId(user?.id ?? null);
-      setUserEmail(user?.email ?? '');
-      setAccessStatus(user ? 'checking' : 'pending');
+      if (!user) { startLocal(); return; }
+      setUserId(user.id);
+      setUserEmail(user.email ?? '');
+      setAccessStatus('checking');
       setIsAuthReady(true);
-    }).catch(() => { setAccessStatus('pending'); setIsAuthReady(true); });
+    }).catch(startLocal);
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'TOKEN_REFRESHED') return;
       const user = session?.user ?? null;
+      const nextId = user?.id ?? LOCAL_USER_ID;
       setUserId((prevId) => {
-        if (prevId === (user?.id ?? null)) return prevId;
+        if (prevId === nextId) return prevId;
         setUserEmail(user?.email ?? '');
-        setAccessStatus(user ? 'checking' : 'pending');
+        setAccessStatus(user ? 'checking' : 'approved');
         setAccessMessage('');
         setProject(DEFAULT_PROJECT);
         setSavedProjects([]);
         setCurrentProjectId(null);
         setCurrentView('editor');
         setIsLoaded(false);
-        return user?.id ?? null;
+        return nextId;
       });
     });
 
@@ -135,7 +146,7 @@ export default function App() {
 
   // ── Access check ─────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!isAuthReady || !userId || !supabase) return;
+    if (!isAuthReady || !userId || userId === LOCAL_USER_ID || !supabase) return;
     let cancelled = false;
 
     (async () => {
@@ -199,7 +210,7 @@ export default function App() {
       } catch { setStatusMessage('Impossible de relire la liste des projets.'); applyProjects([]); }
     };
 
-    if (!supabase) { loadLocal(); return; }
+    if (!supabase || userId === LOCAL_USER_ID) { loadLocal(); return; }
 
     supabase.from('projects').select('id, title, updated_at, data').eq('user_id', userId).order('updated_at', { ascending: false })
       .then(({ data, error }) => {
@@ -285,7 +296,7 @@ export default function App() {
     setCurrentProjectId(id);
     persistSavedProjects(next);
     localStorage.setItem(getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId), id);
-    if (supabase) {
+    if (supabase && userId !== LOCAL_USER_ID) {
       supabase.from('projects').upsert({ id, user_id: userId, title, updated_at: now, data: saved.project })
         .then(({ error }) => {
           setStatusMessage(error ? 'Sauvegardé localement uniquement — synchronisation Supabase échouée.' : 'Projet sauvegardé et synchronisé.');
@@ -298,7 +309,7 @@ export default function App() {
   // (ex. échec réseau lors d'une sauvegarde précédente), pour ne pas dépendre uniquement
   // d'une nouvelle sauvegarde manuelle.
   useEffect(() => {
-    if (!isLoaded || !userId || !supabase || accessStatus !== 'approved') return;
+    if (!isLoaded || !userId || userId === LOCAL_USER_ID || !supabase || accessStatus !== 'approved') return;
     const unsynced = savedProjects.filter((p) => p.syncStatus !== 'synced');
     if (unsynced.length === 0) return;
     unsynced.forEach((sp) => {
@@ -390,7 +401,7 @@ export default function App() {
           : localStorage.removeItem(getUserStorageKey(CURRENT_PROJECT_ID_KEY, userId));
       }
     }
-    if (supabase && userId) {
+    if (supabase && userId && userId !== LOCAL_USER_ID) {
       supabase.from('projects').delete().eq('id', id).eq('user_id', userId)
         .then(({ error }) => { if (error) console.error('Delete failed', error); });
     }
@@ -511,7 +522,6 @@ export default function App() {
       </div>
     );
   }
-  if (!userId)                   return <AuthPage />;
   if (accessStatus === 'checking') return <FullScreenNotice title="Vérification du compte" message="Nous vérifions votre statut d'approbation." />;
   if (accessStatus !== 'approved') return <PendingApprovalPage email={userEmail} message={accessMessage} isError={accessStatus === 'error'} onRefresh={refreshApproval} onSignOut={signOut} />;
   if (!isLoaded)                 return <FullScreenNotice title="Chargement de Sigma" message="Votre espace d'écriture se prépare." />;
@@ -566,9 +576,11 @@ export default function App() {
       <div className="flex items-center gap-1">
         <Button variant="ghost" size="sm" className="flex-1 justify-start text-xs text-[#222831]/45 hover:text-[#222831]"
           onClick={() => { resetProject(); if (mobile) setIsMobileNavOpen(false); }}>Effacer</Button>
-        <Button variant="ghost" size="icon-sm" className="text-[#393E46] hover:text-[#222831]" onClick={signOut} title="Se déconnecter">
-          <LogOut size={15} />
-        </Button>
+        {userId !== LOCAL_USER_ID && (
+          <Button variant="ghost" size="icon-sm" className="text-[#393E46] hover:text-[#222831]" onClick={signOut} title="Se déconnecter">
+            <LogOut size={15} />
+          </Button>
+        )}
       </div>
     </div>
   );

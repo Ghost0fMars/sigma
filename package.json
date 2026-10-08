@@ -1,7 +1,10 @@
 {
   "name": "sigma",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Assistant d'écriture de scénario",
+  "author": "Sigma",
+  "main": "build/electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
@@ -11,7 +14,10 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "tsc --noEmit",
     "index-corpus": "tsx scripts/index-corpus.ts",
-    "sync-dramaturgical": "tsx scripts/sync-dramaturgical-system.ts"
+    "sync-dramaturgical": "tsx scripts/sync-dramaturgical-system.ts",
+    "electron:compile": "vite build && node scripts/build-electron.mjs",
+    "electron": "npm run electron:compile && electron .",
+    "electron:build": "npm run electron:compile && electron-builder --win"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
@@ -39,9 +45,17 @@
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.21",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
+  },
+  "allowScripts": {
+    "electron@44.7.0": true,
+    "esbuild@0.28.2": true,
+    "esbuild@0.25.12": true
   }
 }

@@ -417,6 +417,7 @@ Le texte sera collé dans un éditeur de texte brut : n'utilise aucune mise en f
       </Button>
       <Button variant="ghost" size="sm" className="w-full justify-start text-xs text-[#222831]/45 hover:text-[#222831]"
         onClick={() => { resetProject(); if (mobile) setIsMobileNavOpen(false); }}>Effacer</Button>
+      <p className="px-3 pt-1 text-[10px] tracking-widest text-[#222831]/35">v{__APP_VERSION__}</p>
     </div>
   );
 

@@ -1,0 +1,23 @@
+appId: org.alacle.sigma
+productName: Sigma
+directories:
+  output: release
+  buildResources: public/icons
+files:
+  - build/electron/**
+  - dist/**
+  - package.json
+  - "!node_modules/**"
+extraResources:
+  - from: data/corpus
+    to: corpus
+npmRebuild: false
+win:
+  target: nsis
+  icon: public/icons/icon-512.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Sigma

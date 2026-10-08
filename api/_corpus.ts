@@ -7,9 +7,10 @@ import path from 'path';
 
 export const EMBED_DIM = 1024; // bge-m3 (Albert)
 
-const CORPUS_DIR      = path.join(process.cwd(), 'data', 'corpus');
-const CHUNKS_FILE     = path.join(CORPUS_DIR, 'chunks.json');
-const EMBEDDINGS_FILE = path.join(CORPUS_DIR, 'embeddings.f32');
+// SIGMA_CORPUS_DIR : défini par l'app Electron (corpus livré dans les ressources).
+const corpusDir      = () => process.env.SIGMA_CORPUS_DIR || path.join(process.cwd(), 'data', 'corpus');
+const chunksFile     = () => path.join(corpusDir(), 'chunks.json');
+const embeddingsFile = () => path.join(corpusDir(), 'embeddings.f32');
 
 export interface CorpusChunk {
   source: string;
@@ -38,8 +39,8 @@ function normalize(vector: ArrayLike<number>): Float32Array {
 export function loadCorpus(): LoadedCorpus | null {
   if (cache !== undefined) return cache;
   try {
-    const chunks = JSON.parse(fs.readFileSync(CHUNKS_FILE, 'utf-8')) as CorpusChunk[];
-    const buffer = fs.readFileSync(EMBEDDINGS_FILE);
+    const chunks = JSON.parse(fs.readFileSync(chunksFile(), 'utf-8')) as CorpusChunk[];
+    const buffer = fs.readFileSync(embeddingsFile());
     const vectors = new Float32Array(buffer.buffer, buffer.byteOffset, buffer.byteLength / 4);
     if (vectors.length !== chunks.length * EMBED_DIM) throw new Error('Corpus local incohérent');
     cache = { chunks, vectors };
@@ -52,9 +53,9 @@ export function loadCorpus(): LoadedCorpus | null {
 export function writeCorpus(chunks: CorpusChunk[], embeddings: number[][]): void {
   const vectors = new Float32Array(chunks.length * EMBED_DIM);
   embeddings.forEach((embedding, i) => vectors.set(normalize(embedding), i * EMBED_DIM));
-  fs.mkdirSync(CORPUS_DIR, { recursive: true });
-  fs.writeFileSync(CHUNKS_FILE, JSON.stringify(chunks));
-  fs.writeFileSync(EMBEDDINGS_FILE, Buffer.from(vectors.buffer));
+  fs.mkdirSync(corpusDir(), { recursive: true });
+  fs.writeFileSync(chunksFile(), JSON.stringify(chunks));
+  fs.writeFileSync(embeddingsFile(), Buffer.from(vectors.buffer));
   cache = undefined;
 }
 

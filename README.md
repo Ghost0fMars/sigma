@@ -1,0 +1,172 @@
+# SIGMA
+
+**Système Intelligent Génératif et Méthodique Assisté**
+
+Assistant d'écriture de scénario qui accompagne l'auteur du synopsis au scénario complet, étape par étape, avec une assistance IA à chaque palier. Construit avec React, Vite, TypeScript et l'API Albert (DINUM).
+
+> 🧪 **Bêta.** SIGMA est en cours de développement. Des aspérités sont attendues — les retours sont bienvenus.
+
+🌐 [sigma.alacle.org](https://sigma.alacle.org)
+
+---
+
+## Cadre théorique : l'Intégrale Dramatique
+
+SIGMA est le versant **cinéma** d'un projet de recherche-création articulé autour d'un modèle original, l'**Intégrale Dramatique** :
+
+```
+S(t) = ∫₀ᵗ [V(τ) · P(t|τ)] · C(t) dτ
+```
+
+Ce modèle pose qu'un récit et un parcours d'apprentissage obéissent au même opérateur : une tension (ou un sens) **S(t)** s'accumule dans le temps, et un opérateur de rétroaction **P(t|τ)** — l'anagnorisis d'Aristote, l'après-coup — réévalue rétroactivement la valeur des évènements passés au moment du climax.
+
+L'ambition de SIGMA est de mettre ce modèle au travail sur le terrain scénaristique : cartographier la tension accumulée **S(t)** le long d'un scénario, et donner à voir la friction (le tenseur de contexte **C**) entre la psyché des personnages et les contraintes du monde. Les fonctionnalités décrites ci-dessous en constituent la base concrète ; la cartographie dramatique complète est l'horizon de développement.
+
+> SIGMA a un jumeau côté pédagogie : **SAGE**, qui applique le même modèle à la conception de séances. Voir [github.com/Ghost0fMars/sage](https://github.com/Ghost0fMars/sage).
+
+---
+
+## Fonctionnalités
+
+- Parcours d'écriture en **cinq étapes** : synopsis, synopsis développé, scène à scène, traitement, scénario.
+- **Fiche projet** : titre, logline, notes de travail et progression.
+- **Tableau de scènes réordonnable** : types dramatiques, indications, description et information clé.
+- **Assistance IA par étape**, dont la génération structurée du scène à scène.
+- **Sauvegarde automatique** dans le navigateur, isolée par utilisateur connecté.
+- **Export Markdown** complet du projet.
+- **PWA** : installable sur ordinateur et mobile, écran principal disponible hors connexion.
+
+---
+
+## Stack technique
+
+- **React** + **Vite** + **TypeScript**
+- **shadcn/ui** (composants)
+- **Albert** (API IA de l'État, compatible OpenAI) via des fonctions serverless Vercel (`/api/generate`, `/api/chat`, `/api/import`)
+- **Stockage 100 % local** — projets dans le navigateur (`localStorage`), corpus RAG dans `data/corpus/`
+- **Vercel** — hébergement et fonctions serverless
+- **PWA** — installation et mode hors-ligne partiel
+
+---
+
+## Lancer localement
+
+**Prérequis :** Node.js 18+.
+
+1. Installez les dépendances :
+
+```bash
+npm install
+```
+
+2. Créez un fichier `.env.local` à la racine (ignoré par git, à ne **jamais** committer) :
+
+```env
+# Clé Albert — reste côté serveur (fonctions Vercel /api/*), non exposée au navigateur
+ALBERT_API_KEY=votre_cle_albert
+ALBERT_MODEL=mistral-small-3-2-24b-instruct-2506
+# Optionnels : ALBERT_BASE_URL, ALBERT_EMBED_MODEL (défaut bge-m3), ALBERT_MAX_OUTPUT_TOKENS
+```
+
+> 🔐 La clé Albert **ne doit pas** porter le préfixe `VITE_` : seules les variables `VITE_*` sont injectées dans le bundle client. La garder sans préfixe la maintient côté serveur.
+
+3. Lancez l'application :
+
+```bash
+npm run dev
+```
+
+Servie par défaut sur [http://localhost:3000](http://localhost:3000).
+
+### Sur Windows avec VS Code
+
+Si `npm run dev` est bloqué par PowerShell, lancez plutôt `npm.cmd run dev`.
+
+Pour ouvrir le projet dans VS Code, double-cliquez sur `open-in-vscode.cmd`. Vous pouvez aussi utiliser la tâche VS Code : `Ctrl+Shift+P` → `Tasks: Run Task` → `Lancer Sigma`.
+
+Alternative : double-cliquez sur `start-auteur.cmd`, puis ouvrez [http://localhost:3000](http://localhost:3000).
+
+---
+
+## Données locales
+
+Il n'y a ni compte ni base distante : l'application s'ouvre directement sur l'éditeur.
+
+- **Projets d'écriture** — sauvegardés dans le navigateur (`localStorage`). Ils restent sur cet appareil et ce navigateur : vider les données du site les efface. Utilisez **Exporter** pour en garder une copie.
+- **Corpus narratologique (RAG du Script Doctor)** — stocké dans `data/corpus/` (`chunks.json` pour les textes, `embeddings.f32` pour les vecteurs). La recherche par similarité se fait en mémoire dans `api/_corpus.ts`. Pour reconstruire le corpus depuis les fichiers `.txt` : `npm run index-corpus` (variable `CORPUS_PATH`, nécessite `ALBERT_API_KEY` ; sans `CORPUS_PATH` valide, les chunks existants sont ré-encodés avec `bge-m3`).
+
+---
+
+## Déployer sur Vercel
+
+Réglages recommandés :
+
+- **Framework Preset** : `Vite`
+- **Build Command** : `npm run build`
+- **Output Directory** : `dist`
+- **Install Command** : `npm install`
+
+Variables d'environnement à ajouter dans Vercel : `ALBERT_API_KEY`, `ALBERT_MODEL` (optionnel, défaut `mistral-small-3-2-24b-instruct-2506`).
+
+La clé Albert reste côté serveur via la fonction `/api/generate` ; elle n'est pas injectée dans le navigateur. Les fonctions IA nécessitent une connexion internet.
+
+---
+
+## Installer SIGMA comme application (PWA)
+
+Après déploiement, SIGMA s'installe comme une application :
+
+- **Chrome / Edge (ordinateur)** : icône d'installation dans la barre d'adresse.
+- **Android** : menu `⋮` → `Ajouter à l'écran d'accueil` / `Installer l'application`.
+- **iPhone / iPad** : bouton de partage dans Safari → `Sur l'écran d'accueil`.
+
+---
+
+## Scripts
+
+```bash
+npm run dev      # serveur de développement Vite
+npm run build    # build de production
+npm run lint     # vérification TypeScript
+npm run clean    # supprime le dossier dist
+```
+
+---
+
+## Données & confidentialité
+
+SIGMA manipule deux types de données : vos **projets d'écriture** (stockés uniquement dans votre navigateur) et le corpus narratologique livré avec l'application. Aucun compte n'est requis. Aucune donnée tierce sensible n'est traitée. Les textes envoyés à l'IA transitent par l'API Albert le temps de la génération.
+
+---
+
+## Feuille de route
+
+- [ ] **Cartographie de la tension dramatique S(t)** le long du scénario (visualisation de l'Intégrale Dramatique).
+- [ ] Modélisation du **tenseur de contexte C** : friction entre trajectoires des personnages et antagonisme du monde.
+
+---
+
+## Licence
+
+Ce projet est distribué sous licence **GNU Affero General Public License v3.0 (AGPL-3.0)**. Voir le fichier [`LICENSE`](./LICENSE).
+
+Copyright (C) 2026 Étienne — [àlaclé](https://alacle.org)
+
+En résumé :
+
+- Vous êtes libre d'utiliser, d'étudier, de modifier et de redistribuer SIGMA.
+- **Toute version modifiée et redistribuée doit elle-même rester ouverte sous AGPL-3.0** — y compris si elle est mise à disposition via un service en réseau (l'AGPL ferme le « trou SaaS » : héberger une version modifiée oblige à en publier le code source). C'est particulièrement pertinent ici, SIGMA étant déployé comme application web.
+- Les mentions de copyright doivent être conservées et les modifications signalées.
+- Le logiciel est fourni « tel quel », sans aucune garantie.
+
+Ce choix garantit que SIGMA **reste libre et ouvert pour toujours** : personne ne peut s'en saisir pour en faire une version fermée et propriétaire.
+
+> En tant que titulaire des droits, l'auteur conserve la liberté d'utiliser SIGMA selon d'autres modalités. L'AGPL ne lie que les tiers.
+
+---
+
+## Auteur
+
+Développé par Étienne dans le cadre de [àlaclé](https://alacle.org), comme artefact de recherche-création.
+
+🌐 [alacle.org](https://alacle.org)

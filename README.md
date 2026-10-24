@@ -33,7 +33,7 @@ L'ambition de SIGMA est de mettre ce modèle au travail sur le terrain scénaris
 - **Tableau de scènes réordonnable** : types dramatiques, indications, description et information clé.
 - **Assistance IA par étape**, dont la génération structurée du scène à scène.
 - **Sauvegarde automatique** dans le navigateur, isolée par utilisateur connecté.
-- **Export Markdown** complet du projet.
+- **Export Markdown** complet du projet, et **import** `.md` / `.fountain` / `.txt` : un scénario (intitulés `INT.` / `EXT.` ou `INT – LIEU – JOUR`) ou un export SIGMA est repris tel quel, avec toutes ses scènes ; l'IA complète ensuite l'analyse dramatique sans jamais bloquer l'import. Vérification : `npx tsx scripts/check-import.ts`.
 - **PWA** : installable sur ordinateur et mobile, écran principal disponible hors connexion.
 
 ---

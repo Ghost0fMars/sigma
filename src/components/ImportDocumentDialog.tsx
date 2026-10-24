@@ -59,7 +59,7 @@ export function ImportDocumentDialog({
             Importer un document
           </DialogTitle>
           <p className="mt-1 text-sm text-[#393E46]">
-            L'IA analyse votre document et reconstruit un projet complet : scène à scène, synopsis, traitement et scénario.
+            Un scénario ou un export Markdown de SIGMA est repris tel quel, avec toutes ses scènes. Les autres documents sont analysés par l'IA, qui reconstruit un projet complet.
           </p>
         </DialogHeader>
 

@@ -34,7 +34,8 @@ import {
   DEFAULT_PROJECT, STEP_ORDER, computeIntegrale,
   countWords, createScene, asMarkdown, downloadText, normalizeProject,
 } from './lib/dramaturgical';
-import { Metric }             from './components/Metric';
+import { mergeEnrichment, parseImportedDocument, scenePlanDigest } from './lib/importDocument';
+import { Metric }            from './components/Metric';
 import { StepContent }        from './components/StepContent';
 import { FullScreenNotice }   from './components/FullScreenNotice';
 
@@ -194,7 +195,33 @@ export default function App() {
     setStatusMessage('Nouveau projet prêt.');
   };
 
+  // Complète en arrière-plan (types, V(t), C(t), synopsis…) un projet déjà importé : jamais bloquant.
+  const enrichImportedProject = async (imported: Project) => {
+    try {
+      const res  = await fetch('/api/import', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentType: 'plan', title: imported.title, content: scenePlanDigest(imported.scenes) }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Enrichment request failed');
+      setProject((prev) => mergeEnrichment(prev, data.project));
+      setStatusMessage('Analyse dramatique terminée. Pensez à sauvegarder le projet.');
+    } catch (err) {
+      console.error(err);
+      setStatusMessage('Projet importé tel quel. L’analyse IA est indisponible (scènes et scénario conservés).');
+    }
+  };
+
   const handleImportDocument = async (documentType: string, content: string) => {
+    // Import déterministe : le scénario et toutes ses scènes sont repris sans passer par l'IA.
+    const local = parseImportedDocument(content, documentType);
+    if (local) {
+      const { kind, project: imported } = local;
+      setProject(imported); setCurrentProjectId(null); setCurrentStep(kind === 'screenplay' ? 'board' : 'synopsis');
+      setCurrentView('editor'); setAnalysisSuggestions({}); setLastAiSnapshot(null); setIsImportDialogOpen(false);
+      setStatusMessage(`Projet « ${imported.title} » importé : ${imported.scenes.length} scène(s).`
+        + (kind === 'screenplay' ? ' Analyse dramatique en cours…' : ' Pensez à le sauvegarder.'));
+      if (kind === 'screenplay' && imported.scenes.length > 0) void enrichImportedProject(imported);
+      return;
+    }
     setIsImportLoading(true); setStatusMessage('Reconstruction du projet en cours...');
     try {
       const res  = await fetch('/api/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ documentType, content }) });

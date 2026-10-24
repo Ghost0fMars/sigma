@@ -1,7 +1,7 @@
 /**
  * Fonctions pures liées à l'intégrale dramatique S(t).
  */
-import { Scene, SceneType, Project } from '../types';
+import { DEFAULT_SCENE_DURATION, Scene, SceneType, Project } from '../types';
 
 export const DEFAULT_PROJECT: Project = {
   title: 'Sans titre',
@@ -77,7 +77,7 @@ export function asMarkdown(project: Project): string {
   const scenes = project.scenes
     .map(
       (scene, i) =>
-        `### ${i + 1}. ${scene.title}\n\n- Indications: ${scene.indications || 'Non renseigné'}\n- Type: ${scene.type}\n- Information dramatique: ${scene.dramaticInfo || 'Non renseignée'}\n\n${scene.description || 'Description à compléter.'}`,
+        `### ${i + 1}. ${scene.title}\n\n- Indications: ${scene.indications || 'Non renseigné'}\n- Type: ${scene.type}\n- Information dramatique: ${scene.dramaticInfo || 'Non renseignée'}\n- Valeur V(t): ${scene.vt}\n- Pression C(t): ${scene.ct}\n- Durée: ${scene.duration ?? DEFAULT_SCENE_DURATION}\n\n${scene.description || 'Description à compléter.'}`,
     )
     .join('\n\n');
 

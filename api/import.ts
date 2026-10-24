@@ -57,7 +57,37 @@ export default async function handler(req: any, res: any) {
   const instruction = TYPE_INSTRUCTIONS[documentType] ?? TYPE_INSTRUCTIONS.idee;
   const titleHint = title ? ` (titre suggéré : "${title}")` : '';
 
-  const prompt = `Tu es script-doctor expert en dramaturgie. Un auteur t'envoie ${typeLabel}. Analyse-le et reconstruis un projet Sigma complet.
+  // « plan » : scénario déjà découpé côté client (toutes les scènes sont connues).
+  // L'IA n'invente ni ne retire aucune scène : elle annote chacune par son numéro.
+  const isPlan = documentType === 'plan';
+  const planPrompt = `Tu es script-doctor expert en dramaturgie. Voici le plan scène à scène d'un scénario DÉJÀ découpé : une scène par ligne, numérotée. N'ajoute, ne retire et ne fusionne aucune scène.${titleHint}
+
+${DRAMATURGICAL_REFERENCES}
+
+Pour CHAQUE scène, évalue :
+- type : uniquement l'un de ces types : ${SCENE_TYPES}
+- vt : valeur de l'acte de -2 (effondrement total) à +2 (climax positif)
+- ct : pression contextuelle de 0 (nulle) à 1 (maximale)
+- dramaticInfo : l'information dramatique clé en une phrase (révélation, décision, retournement…)
+Génère aussi le logline, le synopsis (2-4 paragraphes), le synopsis développé (500-800 mots), le traitement (récit au présent) et des notes (mythos Frye, faiblesse/besoin Truby, étape Campbell dominante).
+Rédige TOUT en français.
+
+Réponds UNIQUEMENT en JSON valide, sans commentaire ni balise markdown :
+{
+  "logline": "string",
+  "synopsis": "string",
+  "developedSynopsis": "string",
+  "treatment": "string",
+  "notes": "string",
+  "scenes": [ { "index": 1, "type": "string", "vt": number, "ct": number, "dramaticInfo": "string" } ]
+}
+
+Plan du scénario :
+---
+${content.slice(0, 40000)}
+---`;
+
+  const prompt = isPlan ? planPrompt : `Tu es script-doctor expert en dramaturgie. Un auteur t'envoie ${typeLabel}. Analyse-le et reconstruis un projet Sigma complet.
 
 ${DRAMATURGICAL_REFERENCES}
 
@@ -116,7 +146,10 @@ ${content.slice(0, 14000)}
     .trim();
 
   try {
-    const projectData = JSON.parse(jsonText);
+    // Tolère un texte avant/après l'objet JSON (le modèle ajoute parfois une phrase d'introduction).
+    const start = jsonText.indexOf('{');
+    const end = jsonText.lastIndexOf('}');
+    const projectData = JSON.parse(start >= 0 && end > start ? jsonText.slice(start, end + 1) : jsonText);
     return res.status(200).json({ project: projectData });
   } catch {
     return res.status(500).json({

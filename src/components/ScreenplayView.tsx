@@ -1,20 +1,19 @@
-import { isCue, isSlug, stripMd } from '../lib/importDocument';
+import { isSlug, stripMd } from '../lib/importDocument';
+import { classifyScreenplay } from '../lib/screenplayLines';
 
 // Mise en page lecture : séquences en gras, répliques (nom, didascalie, texte) centrées.
 export function ScreenplayView({ text }: { text: string }) {
-  let inDialogue = false;
   return (
     <div>
-      {text.split('\n').map((raw, i) => {
-        const l = stripMd(raw);
-        if (!l) { inDialogue = false; return <div key={i} className="h-4" />; }
-        if (isSlug(l)) { inDialogue = false; return <p key={i} className="mt-6 mb-2 font-bold uppercase">{l.replace(/^\./, '')}</p>; }
-        if (!inDialogue && isCue(l)) { inDialogue = true; return <p key={i} className="mt-4 text-center font-bold uppercase">{l}</p>; }
-        if (inDialogue) {
-          const paren = /^\(.*\)$/.test(l);
-          return <p key={i} className={`mx-auto max-w-[28rem] text-center ${paren ? 'italic' : ''}`}>{l}</p>;
+      {classifyScreenplay(text).map(({ type, text: l }, i) => {
+        switch (type) {
+          case 'blank': return <div key={i} className="h-4" />;
+          case 'slug': return <p key={i} className="mt-6 mb-2 font-bold uppercase">{l}</p>;
+          case 'cue': return <p key={i} className="mt-4 text-center font-bold uppercase">{l}</p>;
+          case 'paren': return <p key={i} className="mx-auto max-w-[28rem] text-center italic">{l}</p>;
+          case 'dialogue': return <p key={i} className="mx-auto max-w-[28rem] text-center">{l}</p>;
+          default: return <p key={i}>{l}</p>;
         }
-        return <p key={i}>{l}</p>;
       })}
     </div>
   );

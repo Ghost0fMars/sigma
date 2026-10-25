@@ -35,6 +35,7 @@ import {
   countWords, createScene, asMarkdown, downloadText, normalizeProject,
 } from './lib/dramaturgical';
 import { mergeEnrichment, parseImportedDocument, scenePlanDigest } from './lib/importDocument';
+import { downloadScreenplayDocx } from './lib/exportDocx';
 import { Metric }            from './components/Metric';
 import { StepContent }        from './components/StepContent';
 import { ScreenplayView, ScreenplayToolbar, tagLines, type LineKind } from './components/ScreenplayView';
@@ -396,6 +397,12 @@ Le texte sera collé dans un éditeur de texte brut : n'utilise aucune mise en f
     setStatusMessage('Dernière génération IA annulée.');
     setLastAiSnapshot(null);
   };
+  const exportScreenplayDocx = () => {
+    const slug = (project.title || 'scenario').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    downloadScreenplayDocx(`${slug || 'scenario'}.docx`, project.title, project.screenplay)
+      .then(() => setStatusMessage('Export Word (.docx) téléchargé.'))
+      .catch(() => setStatusMessage('Échec de l’export Word.'));
+  };
   const exportProject = () => { const slug = (project.title || 'sigma').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''); downloadText(`${slug || 'sigma'}.md`, asMarkdown(project)); setStatusMessage('Export Markdown téléchargé.'); };
 
   const navigate = (view: AppView, step?: Step) => {
@@ -612,10 +619,16 @@ Le texte sera collé dans un éditeur de texte brut : n'utilise aucune mise en f
                           <div className="mx-auto min-h-[760px] max-w-3xl rounded-sm bg-white p-6 font-mono text-[15px] leading-tight text-black shadow-2xl sm:p-12">
                             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                               {screenplayEdit || !project.screenplay ? <ScreenplayToolbar onTag={tagScreenplay} /> : <span />}
-                              <Button variant="outline" size="sm" className="text-xs uppercase tracking-widest"
-                                onClick={() => setScreenplayEdit((v) => !v)}>
-                                {screenplayEdit ? 'Mise en page' : 'Éditer le texte'}
-                              </Button>
+                              <div className="flex gap-2">
+                                <Button variant="outline" size="sm" className="text-xs uppercase tracking-widest"
+                                  disabled={!project.screenplay.trim()} onClick={exportScreenplayDocx}>
+                                  Exporter .docx
+                                </Button>
+                                <Button variant="outline" size="sm" className="text-xs uppercase tracking-widest"
+                                  onClick={() => setScreenplayEdit((v) => !v)}>
+                                  {screenplayEdit ? 'Mise en page' : 'Éditer le texte'}
+                                </Button>
+                              </div>
                             </div>
                             {screenplayEdit || !project.screenplay ? (
                               <Textarea placeholder={'INT. BUREAU - JOUR\n\nJEAN est assis à son bureau...'}

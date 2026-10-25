@@ -1,5 +1,5 @@
-import { isSlug, stripMd } from '../lib/importDocument';
-import { classifyScreenplay } from '../lib/screenplayLines';
+import { stripMd } from '../lib/importDocument';
+import { classifyScreenplay, normalizeSlug } from '../lib/screenplayLines';
 
 // Mise en page lecture : séquences en gras, répliques (nom, didascalie, texte) centrées.
 export function ScreenplayView({ text }: { text: string }) {
@@ -40,7 +40,7 @@ export function tagLines(text: string, start: number, end: number, kind: LineKin
     if (i < first || i > last || !raw.trim()) { out.push(raw); return; }
     let l = stripMd(raw).replace(/^\./, '').trim();
     if (kind !== 'paren') l = l.replace(/^\((.*)\)$/, '$1');
-    if (kind === 'slug') { l = l.toUpperCase(); if (!isSlug(l)) l = `INT. ${l}`; }
+    if (kind === 'slug') l = normalizeSlug(l);
     else if (kind === 'cue') l = l.toUpperCase().replace(/[.!?…:;]+$/, '');
     else if (kind === 'paren') l = `(${l.replace(/^\((.*)\)$/, '$1')})`;
     // Séquence, personnage et description ouvrent un bloc ; la réplique se colle au bloc précédent.

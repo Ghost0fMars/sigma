@@ -1,4 +1,5 @@
 import { isCue, isSlug, stripMd } from './importDocument';
+import type { Scene } from '../types';
 
 export type LineType = 'blank' | 'slug' | 'cue' | 'paren' | 'dialogue' | 'action';
 
@@ -34,4 +35,14 @@ export function normalizeSlug(line: string): string {
     if (head) { time = head[1]; s = head[2] ?? ''; } else if (tail) { s = tail[1]; time = tail[2]; }
   }
   return [prefix, s, time && '-', time].filter(Boolean).join(' ');
+}
+
+/** Ajoute à la fin du scénario le titre de séquence et la description de chaque scène (celles déjà présentes sont ignorées). */
+export function appendScenes(screenplay: string, scenes: Scene[]): { text: string; added: number } {
+  const fresh = [...scenes]
+    .sort((a, b) => a.order - b.order)
+    .filter((s) => (s.indications || s.title).trim() && !(s.description.trim() && screenplay.includes(s.description.trim())));
+  const blocks = fresh.map((s) => [normalizeSlug(s.indications || s.title), s.description.trim()].filter(Boolean).join('\n'));
+  const text = [screenplay.trimEnd(), ...blocks].filter(Boolean).join('\n\n');
+  return { text, added: fresh.length };
 }

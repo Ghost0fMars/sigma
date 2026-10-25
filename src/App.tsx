@@ -4,7 +4,7 @@
  */
 
 import {
-  lazy, Suspense, useEffect, useMemo, useState, type ComponentType,
+  lazy, Suspense, useEffect, useMemo, useRef, useState, type ComponentType,
 } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
@@ -37,6 +37,7 @@ import {
 import { mergeEnrichment, parseImportedDocument, scenePlanDigest } from './lib/importDocument';
 import { Metric }            from './components/Metric';
 import { StepContent }        from './components/StepContent';
+import { ScreenplayView, ScreenplayToolbar, tagLines, type LineKind } from './components/ScreenplayView';
 import { FullScreenNotice }   from './components/FullScreenNotice';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,6 +99,15 @@ function migrateUserScopedStorage() {
 
 export default function App() {
   const [project, setProject]               = useState<Project>(DEFAULT_PROJECT);
+  const [screenplayEdit, setScreenplayEdit] = useState(false);
+  const screenplayRef = useRef<HTMLTextAreaElement>(null);
+  const tagScreenplay = (kind: LineKind) => {
+    const el = screenplayRef.current;
+    if (!el) return;
+    const r = tagLines(el.value, el.selectionStart, el.selectionEnd, kind);
+    updateProject({ screenplay: r.text });
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(r.caret, r.caret); });
+  };
   const [savedProjects, setSavedProjects]   = useState<SavedProject[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentView, setCurrentView]       = useState<AppView>('editor');
@@ -600,9 +610,19 @@ Le texte sera collé dans un éditeur de texte brut : n'utilise aucune mise en f
                           onUndoAiAssist={undoLastAiAssist} canUndo={lastAiSnapshot?.stepId === 'screenplay'}
                           isAiLoading={isAiLoading} isAnalysisLoading={isAnalysisLoading} suggestions={analysisSuggestions.screenplay}>
                           <div className="mx-auto min-h-[760px] max-w-3xl rounded-sm bg-white p-6 font-mono text-[15px] leading-tight text-black shadow-2xl sm:p-12">
-                            <Textarea placeholder={'INT. BUREAU - JOUR\n\nJEAN est assis à son bureau...'}
-                              className="min-h-[680px] resize-none whitespace-pre-wrap border-none bg-transparent p-0 font-mono shadow-none focus-visible:ring-0"
-                              value={project.screenplay} onChange={(e) => updateProject({ screenplay: e.target.value })} />
+                            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                              {screenplayEdit || !project.screenplay ? <ScreenplayToolbar onTag={tagScreenplay} /> : <span />}
+                              <Button variant="outline" size="sm" className="text-xs uppercase tracking-widest"
+                                onClick={() => setScreenplayEdit((v) => !v)}>
+                                {screenplayEdit ? 'Mise en page' : 'Éditer le texte'}
+                              </Button>
+                            </div>
+                            {screenplayEdit || !project.screenplay ? (
+                              <Textarea placeholder={'INT. BUREAU - JOUR\n\nJEAN est assis à son bureau...'}
+                                className="min-h-[640px] resize-none whitespace-pre-wrap border-none bg-transparent p-0 font-mono shadow-none focus-visible:ring-0"
+                                ref={screenplayRef} onFocus={() => setScreenplayEdit(true)}
+                                value={project.screenplay} onChange={(e) => updateProject({ screenplay: e.target.value })} />
+                            ) : <ScreenplayView text={project.screenplay} />}
                           </div>
                         </StepContent>
                       )}

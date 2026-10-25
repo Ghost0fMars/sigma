@@ -90,7 +90,7 @@ const TRANSITION_RE = /^(FIN|ELLIPSE|NOIR|FONDU.*|COUPE.*|CUT TO:?|FADE (IN|OUT)
 const TIME_RE = /^(JOUR|NUIT|SOIR|MATIN|AUBE|CR[ÉE]PUSCULE|APR[ÈE]S-MIDI|MIDI|CONTINU|PLUS TARD|LE LENDEMAIN|DAY|NIGHT|EVENING|MORNING|DAWN|DUSK|LATER|CONTINUOUS)\b/i;
 
 /** Retire la décoration Markdown (titres, gras, échappements, numérotation). */
-function stripMd(line: string): string {
+export function stripMd(line: string): string {
   return line
     .replace(/^\s{0,3}#{1,6}\s+/, '')
     .replace(/^\s*>\s?/, '')
@@ -100,9 +100,9 @@ function stripMd(line: string): string {
     .trim();
 }
 
-const isSlug = (l: string) => l.length > 0 && l.length <= 160 && (SLUG_RE.test(l) || FORCED_SLUG_RE.test(l));
+export const isSlug = (l: string) => l.length > 0 && l.length <= 160 && (SLUG_RE.test(l) || FORCED_SLUG_RE.test(l));
 
-const isCue = (l: string) =>
+export const isCue = (l: string) =>
   l.length >= 2 && l.length <= 45 && /[A-ZÀ-ÖØ-Þ]{2}/.test(l)
   && l === l.toUpperCase() && !/[.!?…:;]$/.test(l) && !TRANSITION_RE.test(l) && !isSlug(l);
 

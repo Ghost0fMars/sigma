@@ -35,10 +35,11 @@ import {
   countWords, createScene, asMarkdown, downloadText, normalizeProject,
 } from './lib/dramaturgical';
 import { mergeEnrichment, parseImportedDocument, scenePlanDigest } from './lib/importDocument';
+import { appendScenes } from './lib/screenplayLines';
 import { downloadScreenplayDocx } from './lib/exportDocx';
 import { Metric }            from './components/Metric';
 import { StepContent }        from './components/StepContent';
-import { ScreenplayView, ScreenplayToolbar, tagLines, type LineKind } from './components/ScreenplayView';
+import { ScreenplayView, ScreenplayPanel, tagLines, type LineKind } from './components/ScreenplayView';
 import { FullScreenNotice }   from './components/FullScreenNotice';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -397,6 +398,11 @@ Le texte sera collé dans un éditeur de texte brut : n'utilise aucune mise en f
     setStatusMessage('Dernière génération IA annulée.');
     setLastAiSnapshot(null);
   };
+  const importScenesIntoScreenplay = () => {
+    const { text, added } = appendScenes(project.screenplay, project.scenes);
+    if (added) updateProject({ screenplay: text });
+    setStatusMessage(added ? `${added} scène(s) importée(s) dans le scénario.` : 'Toutes les scènes sont déjà dans le scénario.');
+  };
   const exportScreenplayDocx = () => {
     const slug = (project.title || 'scenario').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     downloadScreenplayDocx(`${slug || 'scenario'}.docx`, project.title, project.screenplay)
@@ -616,26 +622,19 @@ Le texte sera collé dans un éditeur de texte brut : n'utilise aucune mise en f
                           onAiAssist={() => handleAiAssist('screenplay')} onAiAnalyze={() => handleAiAnalysis('screenplay')}
                           onUndoAiAssist={undoLastAiAssist} canUndo={lastAiSnapshot?.stepId === 'screenplay'}
                           isAiLoading={isAiLoading} isAnalysisLoading={isAnalysisLoading} suggestions={analysisSuggestions.screenplay}>
-                          <div className="mx-auto min-h-[760px] max-w-3xl rounded-sm bg-white p-6 font-mono text-[15px] leading-tight text-black shadow-2xl sm:p-12">
-                            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                              {screenplayEdit || !project.screenplay ? <ScreenplayToolbar onTag={tagScreenplay} /> : <span />}
-                              <div className="flex gap-2">
-                                <Button variant="outline" size="sm" className="text-xs uppercase tracking-widest"
-                                  disabled={!project.screenplay.trim()} onClick={exportScreenplayDocx}>
-                                  Exporter .docx
-                                </Button>
-                                <Button variant="outline" size="sm" className="text-xs uppercase tracking-widest"
-                                  onClick={() => setScreenplayEdit((v) => !v)}>
-                                  {screenplayEdit ? 'Mise en page' : 'Éditer le texte'}
-                                </Button>
-                              </div>
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+                            <div className="min-h-[760px] min-w-0 max-w-3xl flex-1 rounded-sm bg-white p-6 font-mono text-[15px] leading-tight text-black shadow-2xl sm:p-12">
+                              {screenplayEdit || !project.screenplay ? (
+                                <Textarea placeholder={'INT. BUREAU - JOUR\n\nJEAN est assis à son bureau...'}
+                                  className="min-h-[680px] resize-none whitespace-pre-wrap border-none bg-transparent p-0 font-mono shadow-none focus-visible:ring-0"
+                                  ref={screenplayRef} onFocus={() => setScreenplayEdit(true)}
+                                  value={project.screenplay} onChange={(e) => updateProject({ screenplay: e.target.value })} />
+                              ) : <ScreenplayView text={project.screenplay} />}
                             </div>
-                            {screenplayEdit || !project.screenplay ? (
-                              <Textarea placeholder={'INT. BUREAU - JOUR\n\nJEAN est assis à son bureau...'}
-                                className="min-h-[640px] resize-none whitespace-pre-wrap border-none bg-transparent p-0 font-mono shadow-none focus-visible:ring-0"
-                                ref={screenplayRef} onFocus={() => setScreenplayEdit(true)}
-                                value={project.screenplay} onChange={(e) => updateProject({ screenplay: e.target.value })} />
-                            ) : <ScreenplayView text={project.screenplay} />}
+                            <ScreenplayPanel editing={screenplayEdit || !project.screenplay} hasText={!!project.screenplay.trim()}
+                              hasScenes={project.scenes.length > 0} onTag={tagScreenplay}
+                              onToggleEdit={() => setScreenplayEdit((v) => !v)}
+                              onImportScenes={importScenesIntoScreenplay} onExport={exportScreenplayDocx} />
                           </div>
                         </StepContent>
                       )}

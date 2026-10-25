@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { stripMd } from '../lib/importDocument';
 import { classifyScreenplay, normalizeSlug } from '../lib/screenplayLines';
 
@@ -53,16 +54,40 @@ export function tagLines(text: string, start: number, end: number, kind: LineKin
   return { text: out.join('\n'), caret };
 }
 
-export function ScreenplayToolbar({ onTag }: { onTag: (kind: LineKind) => void }) {
+const PANEL_BTN = 'w-full rounded border border-black/40 px-2 py-1.5 text-left text-[11px] uppercase tracking-widest hover:bg-black hover:text-white disabled:pointer-events-none disabled:opacity-40';
+
+function PanelSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap gap-2">
-      {KINDS.map(({ kind, label, hint }) => (
-        <button key={kind} type="button" title={hint}
-          onMouseDown={(e) => e.preventDefault()} onClick={() => onTag(kind)}
-          className="rounded border border-black/40 px-2 py-1 text-[11px] uppercase tracking-widest hover:bg-black hover:text-white">
-          {label}
-        </button>
-      ))}
-    </div>
+    <section className="space-y-2">
+      <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#393E46]">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+/** Panneau latéral : style de ligne, affichage, import des scènes, export. */
+export function ScreenplayPanel({ editing, hasText, hasScenes, onTag, onToggleEdit, onImportScenes, onExport }: {
+  editing: boolean; hasText: boolean; hasScenes: boolean;
+  onTag: (kind: LineKind) => void; onToggleEdit: () => void; onImportScenes: () => void; onExport: () => void;
+}) {
+  return (
+    <aside className="w-full shrink-0 space-y-5 rounded-lg border border-[#393E46] bg-white p-4 text-black lg:sticky lg:top-4 lg:w-56 lg:self-start">
+      <PanelSection title="Style de la ligne">
+        {KINDS.map(({ kind, label, hint }) => (
+          <button key={kind} type="button" title={editing ? hint : 'Passez en édition pour typer une ligne'} disabled={!editing}
+            onMouseDown={(e) => e.preventDefault()} onClick={() => onTag(kind)} className={PANEL_BTN}>{label}</button>
+        ))}
+      </PanelSection>
+      <PanelSection title="Affichage">
+        <button type="button" onClick={onToggleEdit} className={PANEL_BTN}>{editing ? 'Mise en page' : 'Éditer le texte'}</button>
+      </PanelSection>
+      <PanelSection title="Scènes">
+        <button type="button" onClick={onImportScenes} disabled={!hasScenes} className={PANEL_BTN}
+          title="Ajoute le titre et la description de chaque scène à la fin du scénario">Importer les scènes</button>
+      </PanelSection>
+      <PanelSection title="Export">
+        <button type="button" onClick={onExport} disabled={!hasText} className={PANEL_BTN}>Exporter .docx</button>
+      </PanelSection>
+    </aside>
   );
 }
